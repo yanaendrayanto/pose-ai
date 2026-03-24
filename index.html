@@ -22,6 +22,8 @@ const ctx = canvas.getContext('2d');
 let lastFrame = {};
 let lastMoveTime = 0;
 let isPlaying = false;
+let particles = [];
+let trails = {};
 
 // ================= AUDIO =================
 const garbha = new Audio("garbha.mp3");
@@ -49,6 +51,51 @@ function getSpeed(prev,curr){
   return Math.hypot(curr.x-prev.x, curr.y-prev.y);
 }
 
+// ================= SMOKE & TRAIL =================
+function addSmoke(x,y){
+  particles.push({
+    x, y,
+    vx:(Math.random()-0.5)*1,
+    vy:(Math.random()-1)*1.5,
+    size:Math.random()*6+4,
+    life:1
+  });
+}
+
+function drawSmoke(){
+  particles.forEach(p=>{
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = "rgba(0,200,255,0.3)";
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,p.size,0,Math.PI*2);
+    ctx.fill();
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= 0.015;
+  });
+  particles = particles.filter(p=>p.life>0);
+  ctx.globalAlpha = 1;
+}
+
+function updateTrail(name,x,y){
+  if(!trails[name]) trails[name]=[];
+  trails[name].push({x,y});
+  if(trails[name].length>20) trails[name].shift();
+}
+
+function drawTrail(){
+  Object.values(trails).forEach(points=>{
+    ctx.beginPath();
+    points.forEach((p,i)=>{
+      if(i===0) ctx.moveTo(p.x,p.y);
+      else ctx.lineTo(p.x,p.y);
+    });
+    ctx.strokeStyle="rgba(0,255,255,0.3)";
+    ctx.lineWidth=2;
+    ctx.stroke();
+  });
+}
+
 // ================= MAIN =================
 async function main(){
   await setupCamera();
@@ -64,7 +111,6 @@ async function main(){
     ctx.clearRect(0,0,canvas.width,canvas.height);
     ctx.drawImage(video,0,0);
 
-    // ✅ Gunakan await di loop utama
     const poses = await detector.estimatePoses(video);
     let detectedMovement = false;
     let totalSpeed = 0;
@@ -78,11 +124,15 @@ async function main(){
           totalSpeed += speed;
           count++;
           if(speed > 6) detectedMovement = true;
+
+          // 🔥 smoke & trail
+          addSmoke(k.x,k.y);
+          updateTrail(k.name,k.x,k.y);
         }
       });
     });
 
-    const avgSpeed = count > 0 ? totalSpeed/count : 0;
+    const avgSpeed = count>0 ? totalSpeed/count : 0;
 
     // Audio logic
     if(detectedMovement && firstClick){
@@ -97,12 +147,13 @@ async function main(){
       garbha.playbackRate = Math.min(2, Math.max(1, 1 + avgSpeed/10));
     }
 
-    // Auto pause jika diam
     if(isPlaying && Date.now() - lastMoveTime > 800){
       garbha.pause();
       isPlaying = false;
     }
 
+    drawTrail();
+    drawSmoke();
     requestAnimationFrame(draw);
   }
 
