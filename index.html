@@ -2,48 +2,39 @@
 <html>
 <head>
   <title>GARBHA MODE - AI Dance System</title>
-
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
-
   <style>
     body{margin:0;overflow:hidden;background:black;}
-    video,canvas{
-      position:absolute;
-      width:100%;
-      height:100%;
-      object-fit:cover;
-      transform:scaleX(-1);
-    }
-    #hud{
-      position:fixed;
-      top:20px;
-      left:20px;
-      z-index:9999;
-      background:rgba(0,0,0,0.3);
-      padding:12px;
-      border-radius:10px;
-      color:#00ffff;
-      font-family:monospace;
-    }
+    video,canvas{position:absolute;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);}
   </style>
 </head>
-
 <body>
 
 <video id="video" autoplay playsinline muted></video>
 <canvas id="canvas"></canvas>
-<div id="hud"></div>
 
 <script>
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-const hud = document.getElementById('hud');
 
-let particles = [];
-let trails = {};
-let historyData = [];
+let lastFrame = {};
+let detectedMovement = false;
+let lastMoveTime = 0;
+let isPlaying = false;
+
+// ================= AUDIO =================
+const garbha = new Audio("garbha.mp3");
+garbha.loop = true;
+
+// Klik pertama untuk unlock audio
+let firstClick = false;
+window.addEventListener('click', ()=>{
+  if(firstClick) return;
+  firstClick = true;
+  garbha.play().catch(e=>console.log("Audio play error:", e));
+});
 
 // ================= CAMERA =================
 async function setupCamera(){
@@ -54,92 +45,15 @@ async function setupCamera(){
   return new Promise(r=>video.onloadeddata=r);
 }
 
-// ================= AUDIO =================
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-const garbha = new Audio("garbha.mp3");
-garbha.preload = "auto";
-garbha.loop = true;
-garbha.muted = true; // preload aman
-
-const track = audioCtx.createMediaElementSource(garbha);
-const gainNode = audioCtx.createGain();
-gainNode.gain.value = 2.5;
-track.connect(gainNode).connect(audioCtx.destination);
-
-let isPlaying = false;
-let lastMoveTime = 0;
-let firstClick = false;
-
-// klik pertama untuk unlock audio
-window.addEventListener('click', async ()=>{
-  if(firstClick) return;
-  firstClick = true;
-  if(audioCtx.state === 'suspended') await audioCtx.resume();
-  garbha.muted = true;
-  garbha.currentTime = 0;
-  try{
-    await garbha.play(); // preload
-    garbha.pause();
-  }catch(e){}
-});
-
-// ================= SMOKE PARTICLE =================
-function addSmoke(x,y){
-  particles.push({
-    x,y,
-    vx:(Math.random()-0.5)*1,
-    vy:(Math.random()-1)*1.5,
-    size:Math.random()*8+4,
-    life:1
-  });
-}
-
-function drawSmoke(){
-  particles.forEach(p=>{
-    ctx.globalAlpha = p.life;
-    ctx.fillStyle = "rgba(0,255,255,0.2)";
-    ctx.beginPath();
-    ctx.arc(p.x,p.y,p.size,0,Math.PI*2);
-    ctx.fill();
-    p.x += p.vx;
-    p.y += p.vy;
-    p.life -= 0.01;
-  });
-  particles = particles.filter(p=>p.life>0);
-  ctx.globalAlpha = 1;
-}
-
-// ================= TRAIL =================
-function updateTrail(name,x,y){
-  if(!trails[name]) trails[name]=[];
-  trails[name].push({x,y});
-  if(trails[name].length>20){
-    trails[name].shift();
-  }
-}
-
-function drawTrail(){
-  Object.values(trails).forEach(points=>{
-    ctx.beginPath();
-    points.forEach(p=>ctx.lineTo(p.x,p.y));
-    ctx.strokeStyle="rgba(0,255,255,0.3)";
-    ctx.lineWidth=2;
-    ctx.stroke();
-  });
-}
-
 // ================= MOTION =================
-function getSpeed(prev, curr){
+function getSpeed(prev,curr){
   if(!prev || !curr) return 0;
   return Math.hypot(curr.x-prev.x, curr.y-prev.y);
 }
 
-let detectedMovement = false;
-
 // ================= MAIN =================
 async function main(){
   await setupCamera();
-
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
 
@@ -147,8 +61,6 @@ async function main(){
     poseDetection.SupportedModels.MoveNet,
     {modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING}
   );
-
-  let lastFrame = {};
 
   function draw(){
     ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -160,37 +72,30 @@ async function main(){
         pose.keypoints.forEach(k=>kp[k.name]=k);
         Object.entries(kp).forEach(([name,k])=>{
           if(k.score>0.4){
-            updateTrail(name,k.x,k.y);
-            addSmoke(k.x,k.y);
             const speed = getSpeed(lastFrame[name],k);
-            if(speed > 6){ detectedMovement = true; }
+            if(speed>6) detectedMovement = true;
             lastFrame[name] = k;
           }
         });
-        historyData.push({time: Date.now(), keypoints: kp});
       });
 
-      // 🔥 AUDIO LOGIC
+      // 🔥 Audio logic
       if(detectedMovement && firstClick){
         lastMoveTime = Date.now();
         if(!isPlaying){
-          garbha.muted = false; // buka mute
-          garbha.play().catch(e=>{}); // play langsung
+          garbha.play().catch(e=>console.log(e));
           isPlaying = true;
         }
       }
-      detectedMovement = false;
 
-      // pause jika diam
+      // Pause jika diam > 800ms
       if(isPlaying && Date.now() - lastMoveTime > 800){
         garbha.pause();
         isPlaying = false;
       }
 
+      detectedMovement = false;
     });
-
-    drawTrail();
-    drawSmoke();
 
     requestAnimationFrame(draw);
   }
@@ -199,18 +104,6 @@ async function main(){
 }
 
 main();
-
-// ================= EXPORT =================
-window.addEventListener('keydown', e=>{
-  if(e.key === 's'){
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(historyData));
-    const dl = document.createElement('a');
-    dl.setAttribute("href", dataStr);
-    dl.setAttribute("download", "dance_data.json");
-    dl.click();
-  }
-});
 </script>
-
 </body>
 </html>
