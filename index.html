@@ -36,8 +36,6 @@ const smoothingFrames = 5;
 
 const connections = [
   ['nose','left_eye'], ['nose','right_eye'],
-  ['left_eye','left_ear'], ['right_eye','right_ear'],
-  ['nose','left_shoulder'], ['nose','right_shoulder'],
   ['left_shoulder','right_shoulder'],
   ['left_shoulder','left_elbow'], ['left_elbow','left_wrist'],
   ['right_shoulder','right_elbow'], ['right_elbow','right_wrist'],
@@ -47,64 +45,69 @@ const connections = [
   ['right_hip','right_knee'], ['right_knee','right_ankle']
 ];
 
-// --- Kamera ---
+// Kamera
 async function setupCamera() {
-  const stream = await navigator.mediaDevices.getUserMedia({video:{width:videoWidth,height:videoHeight}, audio:false});
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { width: videoWidth, height: videoHeight },
+    audio: false
+  });
   video.srcObject = stream;
   await video.play();
 }
 
-// --- Moving average ---
-function smoothValue(history,newVal){
-  history.push(newVal);
+// smoothing
+function smoothValue(history,val){
+  history.push(val);
   if(history.length>smoothingFrames) history.shift();
   return history.reduce((a,b)=>a+b,0)/history.length;
 }
 
-// --- Hitung sudut (A-B-C) ---
+// sudut
 function getAngle(A,B,C){
-  if(!A || !B || !C) return 0;
-  const AB = {x:A.x-B.x, y:A.y-B.y};
-  const CB = {x:C.x-B.x, y:C.y-B.y};
+  if(!A||!B||!C) return 0;
+  const AB = {x:A.x-B.x,y:A.y-B.y};
+  const CB = {x:C.x-B.x,y:C.y-B.y};
   const dot = AB.x*CB.x + AB.y*CB.y;
   const magAB = Math.hypot(AB.x,AB.y);
   const magCB = Math.hypot(CB.x,CB.y);
-  const cosTheta = dot/(magAB*magCB);
-  return Math.acos(Math.min(Math.max(cosTheta,-1),1))*(180/Math.PI);
+  return Math.acos(dot/(magAB*magCB))*(180/Math.PI);
 }
 
-// --- Draw Pose (skeleton + keypoints) ---
+// gambar skeleton
 function drawPose(keypoints){
   const mirrorX = x => videoWidth - x;
-  ctx.strokeStyle='blue'; ctx.lineWidth=3;
+
+  ctx.strokeStyle='blue';
+  ctx.lineWidth=3;
 
   connections.forEach(pair=>{
     const kp1=keypoints.find(k=>k.name===pair[0]);
     const kp2=keypoints.find(k=>k.name===pair[1]);
     if(kp1 && kp2 && kp1.score>0.3 && kp2.score>0.3){
       ctx.beginPath();
-      ctx.moveTo(mirrorX(kp1.x), kp1.y);
-      ctx.lineTo(mirrorX(kp2.x), kp2.y);
+      ctx.moveTo(mirrorX(kp1.x),kp1.y);
+      ctx.lineTo(mirrorX(kp2.x),kp2.y);
       ctx.stroke();
     }
   });
 
-  keypoints.forEach(kp=>{
-    if(kp.score>0.3){
+  keypoints.forEach(k=>{
+    if(k.score>0.3){
       ctx.beginPath();
-      ctx.arc(mirrorX(kp.x), kp.y,5,0,2*Math.PI);
+      ctx.arc(mirrorX(k.x),k.y,5,0,2*Math.PI);
       ctx.fillStyle='red';
       ctx.fill();
     }
   });
 }
 
-// --- Y pixel ke cm ---
-function yToCm(y,minY,maxY){ return (y-minY)*userHeightCm/(maxY-minY); }
+function yToCm(y,minY,maxY){
+  return (y-minY)*userHeightCm/(maxY-minY);
+}
 
-// --- Main ---
 async function main(){
   await setupCamera();
+
   const detector = await poseDetection.createDetector(
     poseDetection.SupportedModels.MoveNet,
     { modelType: poseDetection.movenet.modelType.SINGLEPOSE_THUNDER }
@@ -114,97 +117,90 @@ async function main(){
   const logFrames={};
 
   async function loop(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
     // video mirror
-    ctx.save(); ctx.scale(-1,1); ctx.drawImage(video,-videoWidth,0,videoWidth,videoHeight); ctx.restore();
+    ctx.save();
+    ctx.scale(-1,1);
+    ctx.drawImage(video,-videoWidth,0,videoWidth,videoHeight);
+    ctx.restore();
 
     const poses = await detector.estimatePoses(video,{flipHorizontal:true});
+
     if(poses.length>0){
       const keypoints = poses[0].keypoints;
       drawPose(keypoints);
 
       const validY = keypoints.filter(k=>k.score>0.3).map(k=>k.y);
-      const minY=Math.min(...validY), maxY=Math.max(...validY);
+      const minY=Math.min(...validY);
+      const maxY=Math.max(...validY);
 
-      const points=['nose','left_shoulder','right_shoulder','left_hip','right_hip','left_knee','right_knee','left_ankle','right_ankle','left_wrist','right_wrist'];
-      const heights={}, angles={};
       const kp=name=>keypoints.find(k=>k.name===name);
-      points.forEach(p=>{
-        const point=kp(p);
-        if(point){
-          if(!smoothHistory[p]) smoothHistory[p]=[];
-          heights[p]=yToCm(smoothValue(smoothHistory[p],point.y),minY,maxY);
-        } else heights[p]=null;
-      });
 
-      // Sudut
-      angles.sikuKiri = getAngle(kp('left_shoulder'), kp('left_elbow'), kp('left_wrist'));
-      angles.sikuKanan = getAngle(kp('right_shoulder'), kp('right_elbow'), kp('right_wrist'));
-      angles.bahuKiri = getAngle(kp('left_elbow'), kp('left_shoulder'), kp('left_hip'));
-      angles.bahuKanan = getAngle(kp('right_elbow'), kp('right_shoulder'), kp('right_hip'));
-      angles.lututKiri = getAngle(kp('left_hip'), kp('left_knee'), kp('left_ankle'));
-      angles.lututKanan = getAngle(kp('right_hip'), kp('right_knee'), kp('right_ankle'));
+      const heights={
+        kepala: yToCm(smoothValue(smoothHistory.kepala||=[],kp('nose')?.y||0),minY,maxY),
+        bahuKiri: yToCm(smoothValue(smoothHistory.bk||=[],kp('left_shoulder')?.y||0),minY,maxY),
+        bahuKanan: yToCm(smoothValue(smoothHistory.bn||=[],kp('right_shoulder')?.y||0),minY,maxY)
+      };
 
-      // Tampilkan di output
-      output.textContent=`Ketinggian (cm):
-  Kepala: ${heights.nose?.toFixed(1)}
-  Bahu Kiri: ${heights.left_shoulder?.toFixed(1)}
-  Bahu Kanan: ${heights.right_shoulder?.toFixed(1)}
-  Pinggang Kiri: ${heights.left_hip?.toFixed(1)}
-  Pinggang Kanan: ${heights.right_hip?.toFixed(1)}
-  Lutut Kiri: ${heights.left_knee?.toFixed(1)}
-  Lutut Kanan: ${heights.right_knee?.toFixed(1)}
-  Mata Kaki Kiri: ${heights.left_ankle?.toFixed(1)}
-  Mata Kaki Kanan: ${heights.right_ankle?.toFixed(1)}
-  Tangan Kiri: ${heights.left_wrist?.toFixed(1)}
-  Tangan Kanan: ${heights.right_wrist?.toFixed(1)}
+      const angles={
+        sikuKiri: getAngle(kp('left_shoulder'),kp('left_elbow'),kp('left_wrist')),
+        sikuKanan: getAngle(kp('right_shoulder'),kp('right_elbow'),kp('right_wrist'))
+      };
 
-Sudut (°):
-  Siku Kiri: ${angles.sikuKiri.toFixed(1)}
-  Siku Kanan: ${angles.sikuKanan.toFixed(1)}
-  Bahu Kiri: ${angles.bahuKiri.toFixed(1)}
-  Bahu Kanan: ${angles.bahuKanan.toFixed(1)}
-  Lutut Kiri: ${angles.lututKiri.toFixed(1)}
-  Lutut Kanan: ${angles.lututKanan.toFixed(1)}
+      output.textContent = `
+Ketinggian (cm)
+Kepala: ${heights.kepala.toFixed(1)}
+Bahu Kiri: ${heights.bahuKiri.toFixed(1)}
+Bahu Kanan: ${heights.bahuKanan.toFixed(1)}
 
-Frame: ${Object.keys(logFrames).length+1}`;
+Sudut (°)
+Siku Kiri: ${angles.sikuKiri.toFixed(1)}
+Siku Kanan: ${angles.sikuKanan.toFixed(1)}
+      `;
 
       logFrames[Date.now()]={heights,angles};
-    } else output.textContent="Pose belum terdeteksi.";
+    } else {
+      output.textContent="Pose belum terdeteksi";
+    }
 
     requestAnimationFrame(loop);
   }
+
   loop();
 
-  // --- Capture JPG + teks + skeleton + video ---
-  captureBtn.addEventListener('click',()=>{
-    const tempCanvas = document.createElement('canvas');
-    const tempCtx = tempCanvas.getContext('2d');
-    const width = videoWidth + output.offsetWidth;
-    const height = videoHeight;
-    tempCanvas.width = width;
-    tempCanvas.height = height;
+  captureBtn.onclick=()=>{
+    const tempCanvas=document.createElement('canvas');
+    const tempCtx=tempCanvas.getContext('2d');
 
-    // Background
-    tempCtx.fillStyle="#f0f0f0"; tempCtx.fillRect(0,0,width,height);
-    // Video mirror
-    tempCtx.save(); tempCtx.scale(-1,1);
+    const width=videoWidth+output.offsetWidth;
+    const height=videoHeight;
+
+    tempCanvas.width=width;
+    tempCanvas.height=height;
+
+    tempCtx.fillStyle="#f0f0f0";
+    tempCtx.fillRect(0,0,width,height);
+
+    tempCtx.save();
+    tempCtx.scale(-1,1);
     tempCtx.drawImage(video,-videoWidth,0,videoWidth,videoHeight);
     tempCtx.restore();
-    // Skeleton & keypoints
-    tempCtx.drawImage(canvas,0,0,videoWidth,videoHeight);
 
-    // Teks di kanan
-    tempCtx.fillStyle="black"; tempCtx.font="14px sans-serif";
-    output.textContent.split("\n").forEach((line,i)=>tempCtx.fillText(line,videoWidth+10,20+i*18));
+    tempCtx.drawImage(canvas,0,0);
 
-    // Download JPG
-    const jpgUrl = tempCanvas.toDataURL('image/jpeg',0.95);
-    const a=document.createElement('a');
-    a.href=jpgUrl;
-    a.download=`pose_capture_${Date.now()}.jpg`;
-    a.click();
-  });
+    tempCtx.fillStyle="black";
+    tempCtx.font="14px sans-serif";
 
+    output.textContent.split("\n").forEach((line,i)=>{
+      tempCtx.fillText(line,videoWidth+10,20+i*18);
+    });
+
+    const link=document.createElement('a');
+    link.download="pose.jpg";
+    link.href=tempCanvas.toDataURL("image/jpeg");
+    link.click();
+  };
 }
 
 main();
