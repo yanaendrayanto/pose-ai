@@ -2,39 +2,48 @@
 <html>
 <head>
   <title>GARBHA MODE - AI Dance System</title>
+
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
+
   <style>
     body{margin:0;overflow:hidden;background:black;}
-    video,canvas{position:absolute;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);}
+    video,canvas{
+      position:absolute;
+      width:100%;
+      height:100%;
+      object-fit:cover;
+      transform:scaleX(-1);
+    }
+    #hud{
+      position:fixed;
+      top:20px;
+      left:20px;
+      z-index:9999;
+      background:rgba(0,0,0,0.3);
+      padding:12px;
+      border-radius:10px;
+      color:#00ffff;
+      font-family:monospace;
+    }
   </style>
 </head>
+
 <body>
 
 <video id="video" autoplay playsinline muted></video>
 <canvas id="canvas"></canvas>
+<div id="hud"></div>
 
 <script>
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
+const hud = document.getElementById('hud');
 
-let lastFrame = {};
-let lastMoveTime = 0;
-let isPlaying = false;
 let particles = [];
 let trails = {};
-
-// ================= AUDIO =================
-const garbha = new Audio("garbha.mp3");
-garbha.loop = true;
-let firstClick = false;
-
-window.addEventListener('click', ()=>{
-  if(firstClick) return;
-  firstClick = true;
-  garbha.play().catch(e=>console.log("Audio play error:", e));
-});
+let historyData = [];
 
 // ================= CAMERA =================
 async function setupCamera(){
@@ -45,19 +54,30 @@ async function setupCamera(){
   return new Promise(r=>video.onloadeddata=r);
 }
 
-// ================= MOTION =================
-function getSpeed(prev,curr){
-  if(!prev || !curr) return 0;
-  return Math.hypot(curr.x-prev.x, curr.y-prev.y);
+// ================= AUDIO =================
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playSound(intensity){
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+
+  osc.frequency.value = 200 + intensity*500;
+  gain.gain.value = 0.05;
+
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.1);
 }
 
-// ================= SMOKE & TRAIL =================
+// ================= SMOKE PARTICLE =================
 function addSmoke(x,y){
   particles.push({
-    x, y,
+    x,y,
     vx:(Math.random()-0.5)*1,
-    vy:(Math.random()-1.5)*1.5,
-    size:Math.random()*6+4,
+    vy:(Math.random()-1)*1.5,
+    size:Math.random()*8+4,
     life:1
   });
 }
@@ -65,30 +85,35 @@ function addSmoke(x,y){
 function drawSmoke(){
   particles.forEach(p=>{
     ctx.globalAlpha = p.life;
-    ctx.fillStyle = "rgba(0,200,255,0.3)";
+    ctx.fillStyle = "rgba(0,255,255,0.2)";
     ctx.beginPath();
     ctx.arc(p.x,p.y,p.size,0,Math.PI*2);
     ctx.fill();
+
     p.x += p.vx;
     p.y += p.vy;
-    p.life -= 0.015;
+    p.life -= 0.01;
   });
+
   particles = particles.filter(p=>p.life>0);
   ctx.globalAlpha = 1;
 }
 
+// ================= TRAIL =================
 function updateTrail(name,x,y){
   if(!trails[name]) trails[name]=[];
   trails[name].push({x,y});
-  if(trails[name].length>20) trails[name].shift();
+
+  if(trails[name].length>20){
+    trails[name].shift();
+  }
 }
 
 function drawTrail(){
   Object.values(trails).forEach(points=>{
     ctx.beginPath();
     points.forEach((p,i)=>{
-      if(i===0) ctx.moveTo(p.x,p.y);
-      else ctx.lineTo(p.x,p.y);
+      ctx.lineTo(p.x,p.y);
     });
     ctx.strokeStyle="rgba(0,255,255,0.3)";
     ctx.lineWidth=2;
@@ -96,9 +121,16 @@ function drawTrail(){
   });
 }
 
+// ================= MOTION =================
+function getSpeed(prev, curr){
+  if(!prev || !curr) return 0;
+  return Math.hypot(curr.x-prev.x, curr.y-prev.y);
+}
+
 // ================= MAIN =================
 async function main(){
   await setupCamera();
+
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
 
@@ -107,50 +139,46 @@ async function main(){
     {modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING}
   );
 
-  async function draw(){
+  let lastFrame = {};
+
+  function draw(){
     ctx.clearRect(0,0,canvas.width,canvas.height);
     ctx.drawImage(video,0,0);
 
-    const poses = await detector.estimatePoses(video);
-    let detectedMovement = false;
-    let totalSpeed = 0;
-    let count = 0;
+    detector.estimatePoses(video).then(poses=>{
 
-    poses.forEach(pose=>{
-      pose.keypoints.forEach(k=>{
-        if(k.score > 0.4){
-          const speed = getSpeed(lastFrame[k.name], k);
-          lastFrame[k.name] = k;
-          totalSpeed += speed;
-          count++;
-          if(speed > 6) detectedMovement = true;
+      poses.forEach(pose=>{
 
-          // ✅ Tambahkan particle & trail di setiap keypoint
-          addSmoke(k.x,k.y);
-          updateTrail(k.name,k.x,k.y);
-        }
+        let kp = {};
+        pose.keypoints.forEach(k=>kp[k.name]=k);
+
+        Object.entries(kp).forEach(([name,k])=>{
+
+          if(k.score>0.4){
+
+            updateTrail(name,k.x,k.y);
+            addSmoke(k.x,k.y);
+
+            const speed = getSpeed(lastFrame[name],k);
+
+            if(speed>10){
+              playSound(speed/50);
+            }
+
+            lastFrame[name] = k;
+          }
+
+        });
+
+        // SAVE JSON FRAME
+        historyData.push({
+          time: Date.now(),
+          keypoints: kp
+        });
+
       });
+
     });
-
-    const avgSpeed = count>0 ? totalSpeed/count : 0;
-
-    // Audio logic
-    if(detectedMovement && firstClick){
-      lastMoveTime = Date.now();
-      if(!isPlaying){
-        garbha.play().catch(e=>console.log(e));
-        isPlaying = true;
-      }
-    }
-
-    if(isPlaying){
-      garbha.playbackRate = Math.min(2, Math.max(1, 1 + avgSpeed/10));
-    }
-
-    if(isPlaying && Date.now() - lastMoveTime > 800){
-      garbha.pause();
-      isPlaying = false;
-    }
 
     drawTrail();
     drawSmoke();
@@ -162,6 +190,18 @@ async function main(){
 }
 
 main();
+
+// ================= EXPORT =================
+window.addEventListener('keydown', e=>{
+  if(e.key === 's'){
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(historyData));
+    const dl = document.createElement('a');
+    dl.setAttribute("href", dataStr);
+    dl.setAttribute("download", "dance_data.json");
+    dl.click();
+  }
+});
 </script>
+
 </body>
 </html>
