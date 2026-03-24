@@ -131,6 +131,8 @@ function getSpeed(prev, curr){
   return Math.hypot(curr.x-prev.x, curr.y-prev.y);
 }
 
+let detectedMovement = false; // 🔥 global movement flag
+
 // ================= MAIN =================
 async function main(){
   await setupCamera();
@@ -157,7 +159,6 @@ async function main(){
         pose.keypoints.forEach(k=>kp[k.name]=k);
 
         Object.entries(kp).forEach(([name,k])=>{
-
           if(k.score>0.4){
 
             updateTrail(name,k.x,k.y);
@@ -165,18 +166,13 @@ async function main(){
 
             const speed = getSpeed(lastFrame[name],k);
 
-            if(speed > 8){
-            lastMoveTime = Date.now();
-          
-            if(!isPlaying){
-              garbha.play(); // lanjut dari posisi terakhir
-              isPlaying = true;
+            // 🔥 deteksi gerakan global
+            if(speed > 6){ // bisa tuning
+              detectedMovement = true;
             }
-          }
 
             lastFrame[name] = k;
           }
-
         });
 
         // SAVE JSON FRAME
@@ -187,11 +183,25 @@ async function main(){
 
       });
 
-    }); // auto pause kalau tidak ada gerakan
-if(isPlaying && Date.now() - lastMoveTime > 600){
-  garbha.pause();
-  isPlaying = false;
-}
+      // 🔥 setelah loop semua keypoints per frame
+      if(detectedMovement){
+        lastMoveTime = Date.now();
+
+        if(!isPlaying){
+          garbha.play(); // lanjut dari posisi terakhir
+          isPlaying = true;
+        }
+      }
+
+      detectedMovement = false;
+
+      // auto pause kalau tidak ada gerakan
+      if(isPlaying && Date.now() - lastMoveTime > 800){ // bisa tuning 600~1200
+        garbha.pause();
+        isPlaying = false;
+      }
+
+    });
 
     drawTrail();
     drawSmoke();
