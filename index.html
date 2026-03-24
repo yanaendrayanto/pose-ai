@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>GARBHA MODE – Inferno Extreme</title>
+  <title>GARBHA MODE – Inferno Extreme Light Smoke</title>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
   <style>
@@ -48,8 +48,7 @@ let fireParticles = [];
 let smokeParticles = [];
 
 function spawnFire(px,py){
-  // lidah api memanjang ke atas ± random
-  const angle = -Math.PI/2 + (Math.random()-0.5)*0.3; // arah dominan atas ±0.3 rad
+  const angle = -Math.PI/2 + (Math.random()-0.5)*0.3;
   const speed = Math.random()*3 + 2;
   fireParticles.push({
     x:px, y:py,
@@ -64,36 +63,36 @@ function spawnFire(px,py){
 
 function spawnSmoke(px,py){
   const angle = -Math.PI/2 + (Math.random()-0.5)*0.4;
-  const speed = Math.random()*1.2+0.5;
+  const speed = Math.random()*1+0.3;
   smokeParticles.push({
     x:px, y:py,
     vx: Math.cos(angle)*speed,
     vy: Math.sin(angle)*speed,
     life:1,
-    width: Math.random()*25+20,
-    height: Math.random()*35+30,
+    width: Math.random()*15+10,    // lebih kecil
+    height: Math.random()*20+15,   // lebih kecil
     angleRot: Math.random()*Math.PI*2
   });
 }
 
 function drawParticles(){
-  // smoke
+  // smoke tipis
   smokeParticles.forEach(p=>{
     const grad = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.width);
-    grad.addColorStop(0, `rgba(180,180,180,${p.life*0.4})`);
-    grad.addColorStop(0.8, `rgba(100,100,100,${p.life*0.1})`);
+    grad.addColorStop(0, `rgba(180,180,180,${p.life*0.2})`);
+    grad.addColorStop(0.8, `rgba(120,120,120,${p.life*0.05})`);
     grad.addColorStop(1, `rgba(100,100,100,0)`);
     ctx.fillStyle = grad;
     ctx.save();
     ctx.translate(p.x,p.y);
     ctx.rotate(p.angleRot);
     ctx.beginPath();
-    ctx.ellipse(0,0,p.width*0.6,p.height,0,0,Math.PI*2);
+    ctx.ellipse(0,0,p.width*0.5,p.height,0,0,Math.PI*2);
     ctx.fill();
     ctx.restore();
     p.x += p.vx*0.4;
-    p.y += p.vy*0.6;
-    p.life -= 0.006;
+    p.y += p.vy*0.5;
+    p.life -= 0.003; // lebih lambat hilangnya
   });
   smokeParticles = smokeParticles.filter(p=>p.life>0);
 
@@ -142,7 +141,6 @@ async function main(){
     ctx.drawImage(video,0,0);
 
     const poses = await detector.estimatePoses(video);
-
     let detectedMovement=false;
     let totalSpeed=0,count=0;
 
@@ -154,8 +152,7 @@ async function main(){
           totalSpeed += speed;
           count++;
 
-          // hindari area wajah (top 30%)
-          if(k.y > video.videoHeight*0.3){
+          if(k.y > video.videoHeight*0.3){ // hindari area wajah
             spawnFire(k.x, k.y + speed*0.15);
             spawnSmoke(k.x, k.y + speed*0.12);
           }
