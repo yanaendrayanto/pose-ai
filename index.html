@@ -64,21 +64,20 @@ async function main(){
     ctx.clearRect(0,0,canvas.width,canvas.height);
     ctx.drawImage(video,0,0);
 
+    // 🔥 PENTING: pakai await supaya pose benar-benar dihitung sebelum motion
     const poses = await detector.estimatePoses(video);
     let totalSpeed = 0;
     let count = 0;
     let detectedMovement = false;
 
     poses.forEach(pose=>{
-      let kp = {};
-      pose.keypoints.forEach(k=>kp[k.name]=k);
-      Object.entries(kp).forEach(([name,k])=>{
+      pose.keypoints.forEach(k=>{
         if(k.score>0.4){
-          const speed = getSpeed(lastFrame[name],k);
-          lastFrame[name] = k;
+          const speed = getSpeed(lastFrame[k.name], k);
+          lastFrame[k.name] = k;
           totalSpeed += speed;
           count++;
-          if(speed > 6) detectedMovement = true;
+          if(speed>6) detectedMovement = true;
         }
       });
     });
@@ -95,11 +94,9 @@ async function main(){
     }
 
     if(isPlaying){
-      // audio ikut cepat sesuai gerak
-      garbha.playbackRate = Math.min(2, Math.max(1, 1 + avgSpeed/10));
+      garbha.playbackRate = Math.min(2, Math.max(1, 1 + avgSpeed/10)); // audio ikut cepat
     }
 
-    // pause jika diam
     if(isPlaying && Date.now() - lastMoveTime > 800){
       garbha.pause();
       isPlaying = false;
