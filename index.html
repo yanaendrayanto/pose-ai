@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>GARBHA MODE - Full Body + Face 68 Points + Fire</title>
+<title>GARBHA MODE - Full Final</title>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
@@ -17,15 +17,15 @@
 <canvas id="canvas"></canvas>
 
 <script>
-const video = document.getElementById('video');
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
+const video=document.getElementById("video");
+const canvas=document.getElementById("canvas");
+const ctx=canvas.getContext("2d");
 
 // ================= AUDIO =================
-const garbha = new Audio("garbha.mp3");
-garbha.loop = true;
+const garbha=new Audio("garbha.mp3");
+garbha.loop=true;
 let firstClick=false;
-window.addEventListener('click',()=>{
+window.addEventListener("click",()=>{
   if(firstClick) return;
   firstClick=true;
   garbha.play().catch(e=>console.log(e));
@@ -33,12 +33,12 @@ window.addEventListener('click',()=>{
 
 // ================= CAMERA =================
 async function setupCamera(){
-  const stream = await navigator.mediaDevices.getUserMedia({video:{width:1280,height:720,facingMode:"user"}});
+  const stream=await navigator.mediaDevices.getUserMedia({video:{width:1280,height:720,facingMode:"user"}});
   video.srcObject=stream;
   return new Promise(r=>video.onloadeddata=r);
 }
 
-// ================= PARTICLES =================
+// ================= PARTICLE =================
 let particles=[];
 function addParticle(x,y,color){
   particles.push({x,y,vx:(Math.random()-0.5)*1,vy:(Math.random()*-2-1),life:1,color});
@@ -62,7 +62,7 @@ function drawParticles(){
 }
 
 // ================= TOPENG =================
-const maskImg = new Image();
+const maskImg=new Image();
 maskImg.src="topeng.png";
 
 // ================= MOTION =================
@@ -72,8 +72,8 @@ let isPlaying=false;
 
 // ================= FACE MESH =================
 let faceLandmarks=[];
-const faceMesh = new FaceMesh.FaceMesh({
-  locateFile:(file)=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+const faceMesh=new FaceMesh.FaceMesh({
+  locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
 });
 faceMesh.setOptions({
   maxNumFaces:1,
@@ -82,13 +82,11 @@ faceMesh.setOptions({
   minTrackingConfidence:0.5
 });
 faceMesh.onResults(results=>{
-  if(results.multiFaceLandmarks && results.multiFaceLandmarks.length>0){
-    faceLandmarks=results.multiFaceLandmarks[0];
-  }else faceLandmarks=[];
+  faceLandmarks=results.multiFaceLandmarks && results.multiFaceLandmarks.length>0?results.multiFaceLandmarks[0]:[];
 });
 
 // 68-titik subset
-const FACE_68_INDEX = [
+const FACE_68_INDEX=[
   10,338,297,332,284,251,389,356,454,323,
   361,288,397,365,379,378,400,377,152,148,
   176,149,150,136,172,58,132,93,234,127,
@@ -98,23 +96,25 @@ const FACE_68_INDEX = [
   172,58,132,93,234,127,162,21,54,103
 ];
 
+// ================= MOTION HELPER =================
+function getSpeed(prev,curr){return prev?Math.hypot(curr.x-prev.x,curr.y-prev.y):0;}
+
 // ================= MAIN =================
 async function main(){
   await setupCamera();
   canvas.width=video.videoWidth;
   canvas.height=video.videoHeight;
 
-  const detector = await poseDetection.createDetector(
+  const detector=await poseDetection.createDetector(
     poseDetection.SupportedModels.MoveNet,
-    {modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING}
+    {modelType:poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING}
   );
 
   async function draw(){
     ctx.clearRect(0,0,canvas.width,canvas.height);
     ctx.drawImage(video,0,0,canvas.width,canvas.height);
 
-    // ==== Pose tubuh ====
-    const poses = await detector.estimatePoses(video);
+    const poses=await detector.estimatePoses(video);
     let detectedMovement=false;
     let totalSpeed=0;
     let count=0;
@@ -122,34 +122,34 @@ async function main(){
     poses.forEach(pose=>{
       pose.keypoints.forEach(k=>{
         if(k.score>0.4){
-          const prev = lastFrame[k.name];
-          const speed = prev?Math.hypot(k.x-prev.x,k.y-prev.y):0;
+          const prev=lastFrame[k.name];
+          const speed=getSpeed(prev,k);
           lastFrame[k.name]=k;
           totalSpeed+=speed;
           count++;
           if(speed>6) detectedMovement=true;
 
-          // Api & asap, hindari wajah
-          const faceArea = faceLandmarks.length>0 ? {
-            minX: Math.min(...faceLandmarks.map(l=>l.x*canvas.width)),
-            maxX: Math.max(...faceLandmarks.map(l=>l.x*canvas.width)),
-            minY: Math.min(...faceLandmarks.map(l=>l.y*canvas.height)),
-            maxY: Math.max(...faceLandmarks.map(l=>l.y*canvas.height))
+          // Partikel api & asap, hindari wajah
+          const faceArea=faceLandmarks.length>0?{
+            minX:Math.min(...faceLandmarks.map(l=>l.x*canvas.width)),
+            maxX:Math.max(...faceLandmarks.map(l=>l.x*canvas.width)),
+            minY:Math.min(...faceLandmarks.map(l=>l.y*canvas.height)),
+            maxY:Math.max(...faceLandmarks.map(l=>l.y*canvas.height))
           }:null;
 
-          if(!faceArea || k.x<faceArea.minX || k.x>faceArea.maxX || k.y<faceArea.minY || k.y>faceArea.maxY){
-            addParticle(k.x,k.y,"rgba(255,100,0,0.8)"); // api
-            addParticle(k.x,k.y,"rgba(100,100,100,0.3)"); // asap
+          if(!faceArea||k.x<faceArea.minX||k.x>faceArea.maxX||k.y<faceArea.minY||k.y>faceArea.maxY){
+            addParticle(k.x,k.y,"rgba(255,100,0,0.8)");
+            addParticle(k.x,k.y,"rgba(100,100,100,0.3)");
           }
         }
       });
     });
 
-    const avgSpeed = count>0 ? totalSpeed/count : 0;
+    const avgSpeed=count>0?totalSpeed/count:0;
 
     // ==== Wajah 68 titik ====
-    let face68=[];
     if(faceLandmarks.length>0){
+      const face68=[];
       FACE_68_INDEX.forEach(i=>{
         if(faceLandmarks[i]){
           const x=faceLandmarks[i].x*canvas.width;
@@ -157,17 +157,17 @@ async function main(){
           face68.push({x,y});
         }
       });
-      // titik
+
       ctx.fillStyle="rgba(0,255,255,0.5)";
       face68.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,2,0,Math.PI*2);ctx.fill();});
 
       // topeng mengikuti mata/hidung
-      const leftEye = faceLandmarks[33];
-      const rightEye = faceLandmarks[263];
-      const nose = faceLandmarks[1];
-      const scale = Math.hypot(rightEye.x-leftEye.x,rightEye.y-leftEye.y)*canvas.width*2;
-      const centerX = (leftEye.x+rightEye.x)/2*canvas.width;
-      const centerY = nose.y*canvas.height;
+      const leftEye=faceLandmarks[33];
+      const rightEye=faceLandmarks[263];
+      const nose=faceLandmarks[1];
+      const scale=Math.hypot(rightEye.x-leftEye.x,rightEye.y-leftEye.y)*canvas.width*2;
+      const centerX=(leftEye.x+rightEye.x)/2*canvas.width;
+      const centerY=nose.y*canvas.height;
       ctx.drawImage(maskImg,centerX-scale/2,centerY-scale/2,scale,scale);
     }
 
