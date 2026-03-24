@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>GARBHA INFERNO + TOPENG REALTIME</title>
+  <title>GARBHA Inferno + Topeng Real-Time</title>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
   <style>
@@ -19,6 +19,23 @@ const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
+let lastFrame = {};
+let detector;
+let firstClick = false;
+let isPlaying = false;
+let lastMoveTime = 0;
+let particles = [];
+
+// ================= AUDIO =================
+const garbha = new Audio("garbha.mp3");
+garbha.loop = true;
+
+window.addEventListener('click', async ()=>{
+  if(firstClick) return;
+  firstClick = true;
+  try{ await garbha.play(); garbha.pause(); }catch(e){console.log(e);}
+});
+
 // ================= CAMERA =================
 async function setupCamera(){
   const stream = await navigator.mediaDevices.getUserMedia({
@@ -28,81 +45,53 @@ async function setupCamera(){
   return new Promise(r=>video.onloadeddata=r);
 }
 
-// ================= AUDIO =================
-const garbha = new Audio("garbha.mp3");
-garbha.loop = true;
-let firstClick = false;
-let isPlaying = false;
-let lastMoveTime = 0;
-
-window.addEventListener('click', async ()=>{
-  if(firstClick) return;
-  firstClick = true;
-  try{
-    await garbha.play();
-    garbha.pause();
-  }catch(e){console.log(e);}
-});
-
-// ================= PARTICLE SYSTEM =================
+// ================= PARTICLE =================
 class Particle {
   constructor(x,y,type){
-    this.x = x;
-    this.y = y;
-    this.vx = (Math.random()-0.5)*0.5;
-    this.vy = (type==="fire"?-Math.random()*2:-Math.random()*0.3);
-    this.life = 1;
-    this.size = type==="fire"?Math.random()*6+4:Math.random()*8+4;
-    this.type = type;
+    this.x=x; this.y=y;
+    this.vx=(Math.random()-0.5)*0.5;
+    this.vy=(type==="fire"?-Math.random()*2:-Math.random()*0.3);
+    this.life=1;
+    this.size=type==="fire"?Math.random()*4+3:Math.random()*6+3;
+    this.type=type;
   }
-  update(){ 
-    this.x += this.vx; 
-    this.y += this.vy; 
-    this.life -= 0.01;
-  }
+  update(){ this.x+=this.vx; this.y+=this.vy; this.life-=0.01; }
   draw(ctx){
     ctx.globalAlpha = this.life;
     if(this.type==="fire"){
-      const grd = ctx.createRadialGradient(this.x,this.y,0,this.x,this.y,this.size);
+      const grd=ctx.createRadialGradient(this.x,this.y,0,this.x,this.y,this.size);
       grd.addColorStop(0,"rgba(255,150,0,0.8)");
       grd.addColorStop(0.5,"rgba(255,50,0,0.5)");
       grd.addColorStop(1,"rgba(0,0,0,0)");
-      ctx.fillStyle = grd;
+      ctx.fillStyle=grd;
     } else {
-      ctx.fillStyle = "rgba(150,150,150,0.2)";
+      ctx.fillStyle="rgba(150,150,150,0.2)";
     }
     ctx.beginPath();
     ctx.arc(this.x,this.y,this.size,0,Math.PI*2);
     ctx.fill();
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha=1;
   }
 }
 
-let particles = [];
-let lastFrame = {};
-let detector;
-
-// ================= TOPENG REALTIME =================
+// ================= TOPENG =================
 function drawMask(keypoints){
-  // ambil titik mata, hidung, mulut
   const leftEye = keypoints.find(k=>k.name==="left_eye");
   const rightEye = keypoints.find(k=>k.name==="right_eye");
   const nose = keypoints.find(k=>k.name==="nose");
   const mouth = keypoints.find(k=>k.name==="mouth");
 
   if(leftEye && rightEye && nose && mouth){
-    const width = Math.abs(rightEye.x-leftEye.x)*2;
-    const height = Math.abs(mouth.y-nose.y)*2;
-
+    const width = Math.abs(rightEye.x-leftEye.x)*2.2;
+    const height = Math.abs(mouth.y-nose.y)*2.2;
     const centerX = (leftEye.x+rightEye.x)/2;
     const centerY = (nose.y+mouth.y)/2;
 
-    // gambar topeng
     ctx.save();
     ctx.translate(centerX,centerY);
-    ctx.fillStyle = "rgba(50,50,50,0.7)";
-    ctx.strokeStyle = "orange";
-    ctx.lineWidth = 4;
+    ctx.fillStyle="rgba(50,50,50,0.7)";
+    ctx.strokeStyle="orange";
+    ctx.lineWidth=3;
     ctx.beginPath();
     ctx.ellipse(0,0,width,height,0,0,2*Math.PI);
     ctx.fill();
@@ -120,8 +109,8 @@ function getSpeed(prev,curr){
 // ================= MAIN =================
 async function main(){
   await setupCamera();
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+  canvas.width=video.videoWidth;
+  canvas.height=video.videoHeight;
 
   detector = await poseDetection.createDetector(
     poseDetection.SupportedModels.MoveNet,
@@ -133,56 +122,42 @@ async function main(){
     ctx.drawImage(video,0,0);
 
     const poses = await detector.estimatePoses(video);
-    let detectedMovement = false;
-    let totalSpeed = 0;
-    let count = 0;
+    let detectedMovement=false;
+    let totalSpeed=0;
+    let count=0;
 
     poses.forEach(pose=>{
-      const keypoints = pose.keypoints;
-      // spawn particles hanya di tubuh (hindari muka)
+      const keypoints=pose.keypoints;
       keypoints.forEach(k=>{
         if(k.score>0.4){
-          const speed = lastFrame[k.name]?Math.hypot(k.x-lastFrame[k.name].x,k.y-lastFrame[k.name].y):0;
-          if(speed>1) detectedMovement = true;
-          totalSpeed += speed;
-          count++;
-          lastFrame[k.name] = k;
+          const speed = lastFrame[k.name]?getSpeed(lastFrame[k.name],k):0;
+          totalSpeed+=speed; count++;
+          lastFrame[k.name]=k;
+          if(speed>1) detectedMovement=true;
 
-          // api & asap
+          // Spawn api/asap hanya di tubuh, tangan, kaki (hindari kepala)
           if(!["nose","left_eye","right_eye","mouth"].includes(k.name)){
-            for(let i=0;i<2;i++){
-              particles.push(new Particle(k.x,k.y,"fire"));
-              particles.push(new Particle(k.x,k.y,"smoke"));
-            }
+            if(Math.random()<0.1) particles.push(new Particle(k.x,k.y,"fire"));
+            if(Math.random()<0.05) particles.push(new Particle(k.x,k.y,"smoke"));
           }
         }
       });
-
-      // draw mask di wajah
-      drawMask(keypoints);
+      drawMask(keypoints); // Topeng real-time
     });
 
-    const avgSpeed = count>0 ? totalSpeed/count : 0;
+    const avgSpeed=count>0?totalSpeed/count:0;
 
-    // audio
+    // Audio logic
     if(detectedMovement && firstClick){
-      lastMoveTime = Date.now();
-      if(!isPlaying){
-        garbha.play().catch(e=>console.log(e));
-        isPlaying = true;
-      }
+      lastMoveTime=Date.now();
+      if(!isPlaying){ garbha.play().catch(e=>console.log(e)); isPlaying=true; }
     }
-    if(isPlaying){
-      garbha.playbackRate = Math.min(2,1+avgSpeed/5);
-    }
-    if(isPlaying && Date.now()-lastMoveTime>800){
-      garbha.pause();
-      isPlaying = false;
-    }
+    if(isPlaying) garbha.playbackRate = Math.min(2,1+avgSpeed/5);
+    if(isPlaying && Date.now()-lastMoveTime>800){ garbha.pause(); isPlaying=false; }
 
-    // update particles
+    // Draw particles
     particles.forEach(p=>{p.update(); p.draw(ctx);});
-    particles = particles.filter(p=>p.life>0);
+    particles=particles.filter(p=>p.life>0);
 
     requestAnimationFrame(draw);
   }
@@ -192,6 +167,5 @@ async function main(){
 
 main();
 </script>
-
 </body>
 </html>
