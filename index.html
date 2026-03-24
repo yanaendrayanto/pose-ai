@@ -24,6 +24,7 @@ let lastMoveTime = 0;
 let isPlaying = false;
 let particles = [];
 let trails = {};
+let currentPlaybackRate = 1;
 
 // ================= AUDIO =================
 const garbha = new Audio("garbha.mp3");
@@ -57,21 +58,21 @@ function addSmoke(x,y){
     x, y,
     vx:(Math.random()-0.5)*1,
     vy:(Math.random()-1.5)*1.5,
-    size:Math.random()*6+4,
-    life:1
+    size:Math.random()*6+3,
+    life:Math.random()*0.6+0.4
   });
 }
 
 function drawSmoke(){
   particles.forEach(p=>{
-    ctx.globalAlpha = p.life;
-    ctx.fillStyle = "rgba(0,200,255,0.3)";
+    ctx.globalAlpha = p.life*0.6;
+    ctx.fillStyle = "rgba(0,200,255,0.4)";
     ctx.beginPath();
     ctx.arc(p.x,p.y,p.size,0,Math.PI*2);
     ctx.fill();
     p.x += p.vx;
     p.y += p.vy;
-    p.life -= 0.015;
+    p.life -= 0.01;
   });
   particles = particles.filter(p=>p.life>0);
   ctx.globalAlpha = 1;
@@ -80,7 +81,7 @@ function drawSmoke(){
 function updateTrail(name,x,y){
   if(!trails[name]) trails[name]=[];
   trails[name].push({x,y});
-  if(trails[name].length>20) trails[name].shift();
+  if(trails[name].length>25) trails[name].shift();
 }
 
 function drawTrail(){
@@ -90,11 +91,14 @@ function drawTrail(){
       if(i===0) ctx.moveTo(p.x,p.y);
       else ctx.lineTo(p.x,p.y);
     });
-    ctx.strokeStyle="rgba(0,255,255,0.3)";
+    ctx.strokeStyle="rgba(0,255,255,0.25)";
     ctx.lineWidth=2;
     ctx.stroke();
   });
 }
+
+// ================= LERP FUNCTION =================
+function lerp(a,b,t){ return a + (b-a)*t; }
 
 // ================= MAIN =================
 async function main(){
@@ -125,7 +129,6 @@ async function main(){
           count++;
           if(speed > 6) detectedMovement = true;
 
-          // ✅ Tambahkan particle & trail di setiap keypoint
           addSmoke(k.x,k.y);
           updateTrail(k.name,k.x,k.y);
         }
@@ -134,7 +137,7 @@ async function main(){
 
     const avgSpeed = count>0 ? totalSpeed/count : 0;
 
-    // Audio logic
+    // ================= AUDIO LOGIC =================
     if(detectedMovement && firstClick){
       lastMoveTime = Date.now();
       if(!isPlaying){
@@ -143,10 +146,14 @@ async function main(){
       }
     }
 
+    // Smooth playbackRate change
     if(isPlaying){
-      garbha.playbackRate = Math.min(2, Math.max(1, 1 + avgSpeed/10));
+      const targetRate = Math.min(2, Math.max(1, 1 + avgSpeed/10));
+      currentPlaybackRate = lerp(currentPlaybackRate, targetRate, 0.1);
+      garbha.playbackRate = currentPlaybackRate;
     }
 
+    // Auto pause jika diam
     if(isPlaying && Date.now() - lastMoveTime > 800){
       garbha.pause();
       isPlaying = false;
