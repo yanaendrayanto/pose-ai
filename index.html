@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>GARBHA MODE – Full Body Fire & Smoke</title>
+  <title>GARBHA MODE – Fire & Smoke Controlled</title>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
   <style>
@@ -15,7 +15,6 @@
 <canvas id="canvas"></canvas>
 
 <script>
-// ================= SETUP =================
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
@@ -29,11 +28,10 @@ let firstClick = false;
 const garbha = new Audio("garbha.mp3");
 garbha.loop = true;
 
-// unlock audio on first click
 window.addEventListener('click', ()=>{
   if(firstClick) return;
   firstClick = true;
-  garbha.play().catch(e=>console.log("Audio play error:",e));
+  garbha.play().catch(e=>console.log("Audio play error:", e));
 });
 
 // ================= CAMERA =================
@@ -49,37 +47,36 @@ async function setupCamera(){
 let fireParticles = [];
 let smokeParticles = [];
 
-// generate fire particle
 function spawnFire(px,py){
+  // arah dominan ke atas (mirip tertiup angin)
+  const angle = -Math.PI/2 + (Math.random()-0.5)*0.5; // ±0.25 rad variance
+  const speed = Math.random()*2 + 1.5;
   fireParticles.push({
-    x:px,
-    y:py,
-    vx:(Math.random()-0.5)*1.2,
-    vy:-(Math.random()*3+1),
+    x:px, y:py,
+    vx: Math.cos(angle)*speed,
+    vy: Math.sin(angle)*speed,
     life:1,
     size: Math.random()*12+8,
-    angle:Math.random()*Math.PI*2
+    angleRot: Math.random()*Math.PI*2
   });
 }
 
-// generate smoke particle
 function spawnSmoke(px,py){
+  const angle = -Math.PI/2 + (Math.random()-0.5)*0.5;
+  const speed = Math.random()*1+0.5;
   smokeParticles.push({
-    x:px,
-    y:py,
-    vx:(Math.random()-0.3)*0.6,
-    vy:-(Math.random()*1.5+0.6),
+    x:px, y:py,
+    vx: Math.cos(angle)*speed,
+    vy: Math.sin(angle)*speed,
     life:1,
     size: Math.random()*40+30,
-    angle:Math.random()*Math.PI*2
+    angleRot: Math.random()*Math.PI*2
   });
 }
 
-// draw particles
 function drawParticles(){
-  // smoke first (back)
+  // smoke
   smokeParticles.forEach(p=>{
-    // ellipse with radial gradient
     const grad = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.size);
     grad.addColorStop(0, `rgba(180,180,180,${p.life*0.4})`);
     grad.addColorStop(0.8, `rgba(100,100,100,${p.life*0.1})`);
@@ -88,7 +85,6 @@ function drawParticles(){
     ctx.beginPath();
     ctx.ellipse(p.x,p.y,p.size*0.6,p.size,0,0,Math.PI*2);
     ctx.fill();
-
     p.x += p.vx*0.3;
     p.y += p.vy*0.5;
     p.life -= 0.005;
@@ -105,7 +101,7 @@ function drawParticles(){
 
     ctx.save();
     ctx.translate(p.x,p.y);
-    ctx.rotate(p.angle);
+    ctx.rotate(p.angleRot);
     ctx.beginPath();
     ctx.ellipse(0,0,p.size*0.6,p.size,0,0,Math.PI*2);
     ctx.fill();
@@ -113,14 +109,13 @@ function drawParticles(){
 
     p.x += p.vx;
     p.y += p.vy;
-    p.angle += (Math.random()-0.5)*0.06;
+    p.angleRot += (Math.random()-0.5)*0.06;
     p.life -= 0.01;
   });
-
   fireParticles = fireParticles.filter(p=>p.life>0);
 }
 
-// ================= MOTION HELPERS =================
+// ================= MOTION =================
 function getSpeed(prev,curr){
   if(!prev || !curr) return 0;
   return Math.hypot(curr.x-prev.x, curr.y-prev.y);
@@ -154,11 +149,10 @@ async function main(){
           totalSpeed += speed;
           count++;
 
-          // ** Avoid face region **
+          // Avoid face area (~top 30%)
           if(k.y > video.videoHeight*0.3){
-            // spawn fire + smoke at torso/limbs
-            spawnFire(k.x, k.y + (speed*0.1));
-            spawnSmoke(k.x, k.y + (speed*0.08));
+            spawnFire(k.x, k.y + speed*0.1);
+            spawnSmoke(k.x, k.y + speed*0.08);
           }
 
           if(speed>6) detectedMovement=true;
@@ -168,7 +162,7 @@ async function main(){
 
     const avgSpeed = count>0 ? totalSpeed/count : 0;
 
-    // audio logic
+    // audio
     if(detectedMovement && firstClick){
       lastMoveTime = Date.now();
       if(!isPlaying){
@@ -177,7 +171,6 @@ async function main(){
       }
     }
     if(isPlaying){
-      // smooth playback shift
       garbha.playbackRate = Math.min(2,Math.max(1,1+avgSpeed/12));
     }
     if(isPlaying && Date.now()-lastMoveTime>800){
@@ -185,9 +178,7 @@ async function main(){
       isPlaying=false;
     }
 
-    // draw particles
     drawParticles();
-
     requestAnimationFrame(draw);
   }
 
