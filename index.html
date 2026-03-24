@@ -56,23 +56,25 @@ async function setupCamera(){
 
 // ================= AUDIO =================
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
 const garbha = new Audio("garbha.mp3");
-const track = audioCtx.createMediaElementSource(garbha);
 
+// 🔥 pastikan preload & resume
+garbha.preload = "auto";
+garbha.loop = true;
+
+const track = audioCtx.createMediaElementSource(garbha);
 const gainNode = audioCtx.createGain();
-gainNode.gain.value = 2.5; // 🔥 volume boost
+gainNode.gain.value = 2.5; // volume boost
 
 track.connect(gainNode).connect(audioCtx.destination);
 
 let isPlaying = false;
 let lastMoveTime = 0;
 
-// aktifkan audio setelah klik
+// aktifkan audio setelah klik/touch untuk bypass autoplay policy
 window.addEventListener('click', ()=>{
-  audioCtx.resume();
-  garbha.play();
-  garbha.pause(); // preload
+  if(audioCtx.state === 'suspended') audioCtx.resume();
+  garbha.play().then(()=>garbha.pause()); // preload tanpa suara
 });
 
 // ================= SMOKE PARTICLE =================
@@ -183,17 +185,23 @@ async function main(){
 
       });
 
-      // 🔥 setelah loop semua keypoints per frame
-      if(detectedMovement){
-        lastMoveTime = Date.now();
+      // setelah loop semua keypoints per frame
+if(detectedMovement){
+  lastMoveTime = Date.now();
 
-        if(!isPlaying){
-          garbha.play(); // lanjut dari posisi terakhir
-          isPlaying = true;
-        }
-      }
+  if(!isPlaying){
+    garbha.play().catch(e=>{}); // play audio
+    isPlaying = true;
+  }
+}
 
-      detectedMovement = false;
+detectedMovement = false;
+
+// auto pause
+if(isPlaying && Date.now() - lastMoveTime > 800){
+  garbha.pause();
+  isPlaying = false;
+}
 
       // auto pause kalau tidak ada gerakan
       if(isPlaying && Date.now() - lastMoveTime > 800){ // bisa tuning 600~1200
