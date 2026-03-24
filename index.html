@@ -74,14 +74,13 @@ async function main(){
       poses.forEach(pose=>{
         let kp = {};
         pose.keypoints.forEach(k=>kp[k.name]=k);
-
         Object.entries(kp).forEach(([name,k])=>{
           if(k.score>0.4){
             const speed = getSpeed(lastFrame[name],k);
-            if(speed>6) detectedMovement = true;
             totalSpeed += speed;
             count++;
             lastFrame[name] = k;
+            if(speed>6) detectedMovement = true;
           }
         });
       });
@@ -98,9 +97,12 @@ async function main(){
         }
       }
 
-      // Set playbackRate berdasarkan kecepatan gerakan
+      // Set playbackRate sesuai avgSpeed, minimal 1, maksimal 2.5
       if(isPlaying){
-        garbha.playbackRate = Math.min(2, 1 + avgSpeed/10); // tuning bisa diubah
+        let rate = 1 + avgSpeed/8; // tuning
+        if(rate > 2.5) rate = 2.5;
+        if(rate < 1) rate = 1;
+        garbha.playbackRate = rate;
       }
 
       // Pause jika diam > 800ms
