@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Pose AI STAGE FIX</title>
+  <title>Pose AI STAGE FIX PRO</title>
 
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
@@ -64,21 +64,33 @@ const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const hud = document.getElementById('hud');
 
-let trails = [];
+let particles = [];
 
-// ================= CAMERA HD =================
+// ================= CAMERA =================
 async function setupCamera(){
   const stream = await navigator.mediaDevices.getUserMedia({
     video:{
-      width: {ideal:1280},
+      width:{ideal:1280},
       height:{ideal:720},
       facingMode:"user"
-    },
-    audio:false
+    }
   });
 
   video.srcObject = stream;
   return new Promise(r=>video.onloadeddata=r);
+}
+
+// ================= CM =================
+const REAL_HEIGHT_CM = 170;
+
+function getBodyHeightPx(kp){
+  if(!kp.nose || !kp.left_ankle) return null;
+  return Math.abs(kp.nose.y - kp.left_ankle.y);
+}
+
+function pxToCm(px, bodyPx){
+  if(!px || !bodyPx) return null;
+  return (px / bodyPx) * REAL_HEIGHT_CM;
 }
 
 // ================= UTILS =================
@@ -100,11 +112,51 @@ function gesture(kp){
   return kp.left_wrist.y < kp.left_shoulder.y ? "raise" : "normal";
 }
 
+// ================= EMOSI =================
+function getEmotion(kp){
+  if(!kp.left_shoulder || !kp.right_shoulder) return "unknown";
+
+  const tilt = kp.left_shoulder.y - kp.right_shoulder.y;
+
+  if(Math.abs(tilt) > 40) return "expressive";
+  if(kp.nose && kp.nose.y < kp.left_shoulder.y - 100) return "confident";
+  if(kp.nose && kp.nose.y > kp.left_shoulder.y + 50) return "low energy";
+
+  return "neutral";
+}
+
+// ================= PARTICLE =================
+function addParticle(x,y,color){
+  particles.push({
+    x,y,
+    vy: Math.random()*2+1,
+    life:1,
+    size:Math.random()*4+2,
+    color
+  });
+}
+
+function drawParticles(){
+  particles.forEach(p=>{
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,p.size,0,Math.PI*2);
+    ctx.fill();
+
+    p.y += p.vy;
+    p.life -= 0.02;
+  });
+
+  particles = particles.filter(p=>p.life>0);
+  ctx.globalAlpha = 1;
+}
+
 // ================= MAIN =================
 async function main(){
   await setupCamera();
 
-  // penting: sync canvas ke video
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
 
@@ -115,8 +167,6 @@ async function main(){
 
   function draw(){
     ctx.clearRect(0,0,canvas.width,canvas.height);
-
-    // gambar video dulu (biar sinkron)
     ctx.drawImage(video,0,0,canvas.width,canvas.height);
 
     detector.estimatePoses(video).then(poses=>{
@@ -129,8 +179,9 @@ async function main(){
 
         const hue = (i*120)%360;
         const g = gesture(kp);
+        const emotion = getEmotion(kp);
+        const bodyPx = getBodyHeightPx(kp);
 
-        // skeleton
         const conn = [
           ['left_shoulder','right_shoulder'],
           ['left_shoulder','left_elbow'],['left_elbow','left_wrist'],
@@ -143,38 +194,48 @@ async function main(){
 
         conn.forEach(([a,b])=>{
           if(kp[a]?.score>0.4 && kp[b]?.score>0.4){
+
             ctx.strokeStyle=`hsl(${hue},100%,60%)`;
             ctx.lineWidth=3;
             ctx.beginPath();
             ctx.moveTo(kp[a].x,kp[a].y);
             ctx.lineTo(kp[b].x,kp[b].y);
             ctx.stroke();
+
+            addParticle(
+              (kp[a].x+kp[b].x)/2,
+              (kp[a].y+kp[b].y)/2,
+              `hsl(${hue},100%,70%)`
+            );
           }
         });
 
-        // titik
         kpArr.forEach(k=>{
           if(k.score>0.4){
             ctx.fillStyle=`hsl(${hue},100%,70%)`;
             ctx.beginPath();
             ctx.arc(k.x,k.y,5,0,Math.PI*2);
             ctx.fill();
+
+            addParticle(k.x,k.y,`hsl(${hue},100%,70%)`);
           }
         });
 
-        // HUD dancer 1
         if(i===0){
           hud.textContent = `
-KETINGGIAN (px)
-Kepala: ${safe(kp.nose?.y)}
-Bahu: ${safe(kp.left_shoulder?.y)}
-Pinggul: ${safe(kp.left_hip?.y)}
+TINGGI (CM)
+Bahu: ${safe(pxToCm(kp.left_shoulder?.y, bodyPx))}
+Pinggul: ${safe(pxToCm(kp.left_hip?.y, bodyPx))}
 
 SUDUT (°)
 Siku Kiri: ${safe(sudut(kp.left_shoulder,kp.left_elbow,kp.left_wrist))}
 Siku Kanan: ${safe(sudut(kp.right_shoulder,kp.right_elbow,kp.right_wrist))}
 
-GESTURE: ${g}
+EMOSI
+${emotion}
+
+GESTURE
+${g}
 `;
         }
 
@@ -182,6 +243,7 @@ GESTURE: ${g}
 
     });
 
+    drawParticles();
     requestAnimationFrame(draw);
   }
 
