@@ -50,10 +50,10 @@ let smokeParticles = [];
 function addFire(x,y){
   fireParticles.push({
     x, y,
-    vx:(Math.random()-0.5)*2,
+    vx:(Math.random()-0.5)*1.5,
     vy:-(Math.random()*2+1),
-    width:Math.random()*6+4,
-    height:Math.random()*12+8,
+    width:Math.random()*4+4,
+    height:Math.random()*15+10,
     life:1
   });
 }
@@ -61,25 +61,28 @@ function addFire(x,y){
 function addSmoke(x,y){
   smokeParticles.push({
     x, y,
-    vx:(Math.random()-0.5)*0.5,
-    vy:-(Math.random()*0.5+0.5),
-    size:Math.random()*15+10,
-    life:Math.random()*0.8+0.5
+    vx:(Math.random()-0.3)*0.5,
+    vy:-(Math.random()*0.5+0.7),
+    size:Math.random()*20+15,
+    life:Math.random()*1+0.8
   });
 }
 
 function drawParticles(){
   // Draw smoke
   smokeParticles.forEach(p=>{
-    ctx.globalAlpha = p.life*0.3;
-    ctx.fillStyle = "rgba(200,200,200,0.3)";
+    ctx.globalAlpha = p.life * 0.25;
+    let gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+    gradient.addColorStop(0, "rgba(180,180,180,0.3)");
+    gradient.addColorStop(1, "rgba(100,100,100,0)");
+    ctx.fillStyle = gradient;
     ctx.beginPath();
-    ctx.ellipse(p.x, p.y, p.size, p.size*0.5, 0, 0, Math.PI*2);
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
     ctx.fill();
 
     p.x += p.vx;
     p.y += p.vy;
-    p.life -= 0.005;
+    p.life -= 0.004;
   });
   smokeParticles = smokeParticles.filter(p=>p.life>0);
 
@@ -87,9 +90,9 @@ function drawParticles(){
   fireParticles.forEach(p=>{
     ctx.globalAlpha = p.life;
     let gradient = ctx.createLinearGradient(p.x, p.y, p.x, p.y - p.height);
-    gradient.addColorStop(0, "rgba(255,200,0,0.8)");
-    gradient.addColorStop(0.5, "rgba(255,100,0,0.5)");
-    gradient.addColorStop(1, "rgba(255,0,0,0.1)");
+    gradient.addColorStop(0, "rgba(255,255,0,0.8)");
+    gradient.addColorStop(0.5, "rgba(255,150,0,0.6)");
+    gradient.addColorStop(1, "rgba(255,50,0,0.2)");
     ctx.fillStyle = gradient;
     ctx.beginPath();
     ctx.ellipse(p.x, p.y, p.width, p.height, 0, 0, Math.PI*2);
@@ -97,7 +100,7 @@ function drawParticles(){
 
     p.x += p.vx;
     p.y += p.vy;
-    p.life -= 0.02;
+    p.life -= 0.015;
   });
   fireParticles = fireParticles.filter(p=>p.life>0);
 
@@ -138,7 +141,7 @@ async function main(){
           totalSpeed += speed;
           count++;
 
-          // add fire & smoke per keypoint
+          // Fire & smoke per keypoint
           addFire(k.x, k.y);
           addSmoke(k.x, k.y);
 
