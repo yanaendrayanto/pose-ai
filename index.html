@@ -55,21 +55,14 @@ async function setupCamera(){
 }
 
 // ================= AUDIO =================
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const garbha = new Audio("garbha.mp3");
+garbha.loop = false;
 
-function playSound(intensity){
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-
-  osc.frequency.value = 200 + intensity*500;
-  gain.gain.value = 0.05;
-
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-
-  osc.start();
-  osc.stop(audioCtx.currentTime + 0.1);
-}
+// aktifkan audio setelah klik (biar tidak diblok browser)
+window.addEventListener('click', ()=>{
+  garbha.play();
+  garbha.pause(); // preload saja
+});
 
 // ================= SMOKE PARTICLE =================
 function addSmoke(x,y){
@@ -161,9 +154,10 @@ async function main(){
 
             const speed = getSpeed(lastFrame[name],k);
 
-            if(speed>10){
-              playSound(speed/50);
-            }
+            if(speed > 10){
+            garbha.currentTime = 0;
+            garbha.play();
+          }
 
             lastFrame[name] = k;
           }
