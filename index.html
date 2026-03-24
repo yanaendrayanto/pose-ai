@@ -191,6 +191,8 @@ async function main(){
       lututKanan: yToCm(kp('right_knee')?.y,minY,maxY),
       kakiKiri: yToCm(kp('left_ankle')?.y,minY,maxY),
       kakiKanan: yToCm(kp('right_ankle')?.y,minY,maxY)
+      tanganKiri: yToCm(kp('left_wrist')?.y,minY,maxY),
+      tanganKanan: yToCm(kp('right_wrist')?.y,minY,maxY),
     };
 
     const angles = {
@@ -198,26 +200,34 @@ async function main(){
       sikuKanan: getAngle(kp('right_shoulder'),kp('right_elbow'),kp('right_wrist')),
       lututKiri: getAngle(kp('left_hip'),kp('left_knee'),kp('left_ankle')),
       lututKanan: getAngle(kp('right_hip'),kp('right_knee'),kp('right_ankle'))
+      bahuKiri: getAngle(kp('left_elbow'),kp('left_shoulder'),kp('left_hip')),
+      bahuKanan: getAngle(kp('right_elbow'),kp('right_shoulder'),kp('right_hip')),
     };
 
-    output.textContent = `
-KETINGGIAN (cm)
-Kepala: ${safe(heights.kepala)}
-Bahu Kiri: ${safe(heights.bahuKiri)}
-Bahu Kanan: ${safe(heights.bahuKanan)}
-Pinggul Kiri: ${safe(heights.pinggulKiri)}
-Pinggul Kanan: ${safe(heights.pinggulKanan)}
-Lutut Kiri: ${safe(heights.lututKiri)}
-Lutut Kanan: ${safe(heights.lututKanan)}
-Kaki Kiri: ${safe(heights.kakiKiri)}
-Kaki Kanan: ${safe(heights.kakiKanan)}
+    const safe = v => (v !== undefined && !isNaN(v)) ? v.toFixed(1) : '-';
 
-SUDUT (°)
-Siku Kiri: ${safe(angles.sikuKiri)}
-Siku Kanan: ${safe(angles.sikuKanan)}
-Lutut Kiri: ${safe(angles.lututKiri)}
-Lutut Kanan: ${safe(angles.lututKanan)}
-`;
+    output.textContent = `
+    KETINGGIAN (cm)
+    Kepala: ${safe(heights.kepala)}
+    Bahu Kiri: ${safe(heights.bahuKiri)}
+    Bahu Kanan: ${safe(heights.bahuKanan)}
+    Pinggul Kiri: ${safe(heights.pinggulKiri)}
+    Pinggul Kanan: ${safe(heights.pinggulKanan)}
+    Lutut Kiri: ${safe(heights.lututKiri)}
+    Lutut Kanan: ${safe(heights.lututKanan)}
+    Kaki Kiri: ${safe(heights.kakiKiri)}
+    Kaki Kanan: ${safe(heights.kakiKanan)}
+    Tangan Kiri: ${safe(heights.tanganKiri)}
+    Tangan Kanan: ${safe(heights.tanganKanan)}
+    
+    SUDUT (°)
+    Siku Kiri: ${safe(angles.sikuKiri)}
+    Siku Kanan: ${safe(angles.sikuKanan)}
+    Bahu Kiri: ${safe(angles.bahuKiri)}
+    Bahu Kanan: ${safe(angles.bahuKanan)}
+    Lutut Kiri: ${safe(angles.lututKiri)}
+    Lutut Kanan: ${safe(angles.lututKanan)}
+    `;
 
     requestAnimationFrame(loop);
   }
