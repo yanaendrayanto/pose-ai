@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>GARBHA MODE – Ultra Realistic Rain</title>
+  <title>Water Body Avoidance - AI Dance</title>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
   <style>
@@ -20,9 +20,9 @@ const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
 let lastFrame = {};
-let firstClick = false;
 let lastMoveTime = 0;
 let isPlaying = false;
+let firstClick = false;
 
 // ================= AUDIO =================
 const garbha = new Audio("garbha.mp3");
@@ -40,78 +40,72 @@ async function setupCamera(){
     video:{width:1280,height:720,facingMode:"user"}
   });
   video.srcObject = stream;
-  return new Promise(res=>video.onloadeddata=res);
-}
-
-// ================= RAIN PARTICLES =================
-let rainParticles = [];
-function spawnRain(){
-  for(let i=0;i<5;i++){ // spawn 5 per frame
-    rainParticles.push({
-      x: Math.random()*canvas.width,
-      y: -10,
-      vy: Math.random()*6+4,
-      length: Math.random()*20+10,
-      splashed: false,
-      opacity: Math.random()*0.3 + 0.3
-    });
-  }
-}
-
-function drawRain(poses){
-  rainParticles.forEach(p=>{
-    // cek interaksi dengan tubuh
-    let hitBody=false;
-    poses.forEach(pose=>{
-      pose.keypoints.forEach(k=>{
-        if(k.score>0.4 && k.y>video.videoHeight*0.3){ // hindari wajah
-          const dx = k.x - p.x;
-          const dy = k.y - p.y;
-          if(Math.hypot(dx,dy) < 15){ 
-            hitBody = true;
-          }
-        }
-      });
-    });
-
-    if(hitBody && !p.splashed){
-      // percikan dramatis
-      for(let j=0;j<4;j++){
-        rainParticles.push({
-          x: p.x,
-          y: p.y,
-          vy: Math.random()*2 - 1,
-          length: Math.random()*10+5,
-          splashed: true,
-          opacity: Math.random()*0.5+0.3
-        });
-      }
-      p.splashed=true;
-    }
-
-    // gambar hujan
-    const grad = ctx.createLinearGradient(p.x, p.y, p.x, p.y + p.length);
-    grad.addColorStop(0, `rgba(200,220,255,0)`);
-    grad.addColorStop(0.5, `rgba(200,220,255,${p.opacity})`);
-    grad.addColorStop(1, `rgba(180,200,255,0.7)`);
-
-    ctx.strokeStyle = grad;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(p.x, p.y);
-    ctx.lineTo(p.x, p.y + p.length);
-    ctx.stroke();
-
-    p.y += p.vy;
-  });
-
-  rainParticles = rainParticles.filter(p=>p.y<canvas.height+20);
+  return new Promise(r=>video.onloadeddata=r);
 }
 
 // ================= MOTION =================
 function getSpeed(prev,curr){
   if(!prev || !curr) return 0;
   return Math.hypot(curr.x-prev.x, curr.y-prev.y);
+}
+
+// ================= PARTICLES =================
+class WaterParticle {
+  constructor(x,y){
+    this.x = x;
+    this.y = y;
+    this.vx = 0;
+    this.vy = Math.random()*2 + 3; // gravity
+    this.radius = Math.random()*6 + 4;
+    this.color = "rgba(0,150,255,0.6)";
+    this.active = true;
+  }
+
+  update(keypoints){
+    if(!this.active) return;
+
+    // collision avoidance
+    keypoints.forEach(k=>{
+      if(k.score>0.4 && k.name!=="nose" && k.name!=="left_eye" && k.name!=="right_eye"){
+        const dx = this.x - k.x;
+        const dy = this.y - k.y;
+        const dist = Math.hypot(dx,dy);
+        if(dist < this.radius+10){ // threshold avoidance
+          const angle = Math.atan2(dy,dx);
+          const force = 3;
+          this.vx += Math.cos(angle)*force;
+          this.vy += Math.sin(angle)*force;
+        }
+      }
+    });
+
+    // gravity + small random wind
+    this.vy += 0.1;
+    this.vx += (Math.random()-0.5)*0.2;
+
+    this.x += this.vx;
+    this.y += this.vy;
+
+    // reset if out of screen
+    if(this.y > canvas.height){
+      this.y = -10;
+      this.x = Math.random()*canvas.width;
+      this.vx = 0;
+      this.vy = Math.random()*2 + 3;
+    }
+  }
+
+  draw(){
+    ctx.beginPath();
+    ctx.arc(this.x,this.y,this.radius,0,Math.PI*2);
+    ctx.fillStyle = this.color;
+    ctx.fill();
+  }
+}
+
+let particles = [];
+for(let i=0;i<200;i++){
+  particles.push(new WaterParticle(Math.random()*1280, Math.random()*720));
 }
 
 // ================= MAIN =================
@@ -130,41 +124,49 @@ async function main(){
     ctx.drawImage(video,0,0);
 
     const poses = await detector.estimatePoses(video);
-    let detectedMovement=false;
-    let totalSpeed=0, count=0;
+    let detectedMovement = false;
+    let totalSpeed = 0;
+    let count = 0;
+    let keypoints = [];
 
-    poses.forEach(p=>{
-      p.keypoints.forEach(k=>{
+    poses.forEach(pose=>{
+      pose.keypoints.forEach(k=>{
+        keypoints.push(k);
         if(k.score>0.4){
           const speed = getSpeed(lastFrame[k.name],k);
-          lastFrame[k.name]=k;
-          totalSpeed+=speed;
+          lastFrame[k.name] = k;
+          totalSpeed += speed;
           count++;
-          if(speed>6) detectedMovement=true;
+          if(speed>6) detectedMovement = true;
         }
       });
     });
 
     const avgSpeed = count>0 ? totalSpeed/count : 0;
 
-    // Audio responsive
+    // Audio logic
     if(detectedMovement && firstClick){
       lastMoveTime = Date.now();
       if(!isPlaying){
         garbha.play().catch(e=>console.log(e));
-        isPlaying=true;
+        isPlaying = true;
       }
     }
+
     if(isPlaying){
       garbha.playbackRate = Math.min(2, Math.max(1, 1 + avgSpeed/10));
     }
-    if(isPlaying && Date.now()-lastMoveTime>800){
+
+    if(isPlaying && Date.now() - lastMoveTime > 800){
       garbha.pause();
-      isPlaying=false;
+      isPlaying = false;
     }
 
-    spawnRain();
-    drawRain(poses);
+    // update & draw particles
+    particles.forEach(p=>{
+      p.update(keypoints);
+      p.draw();
+    });
 
     requestAnimationFrame(draw);
   }
