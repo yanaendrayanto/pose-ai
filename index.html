@@ -24,11 +24,14 @@ let detectedMovement = false;
 let lastMoveTime = 0;
 let isPlaying = false;
 
+let particles = [];
+let trails = {};
+let historyData = [];
+
 // ================= AUDIO =================
 const garbha = new Audio("garbha.mp3");
 garbha.loop = true;
 
-// Klik pertama untuk unlock audio
 let firstClick = false;
 window.addEventListener('click', ()=>{
   if(firstClick) return;
@@ -49,6 +52,46 @@ async function setupCamera(){
 function getSpeed(prev,curr){
   if(!prev || !curr) return 0;
   return Math.hypot(curr.x-prev.x, curr.y-prev.y);
+}
+
+// ================= TRAIL & SMOKE =================
+function updateTrail(name,x,y){
+  if(!trails[name]) trails[name] = [];
+  trails[name].push({x,y});
+  if(trails[name].length > 20) trails[name].shift();
+}
+
+function drawTrail(){
+  Object.values(trails).forEach(points=>{
+    ctx.beginPath();
+    points.forEach((p,i)=>ctx.lineTo(p.x,p.y));
+    ctx.strokeStyle="rgba(0,255,255,0.3)";
+    ctx.lineWidth=2;
+    ctx.stroke();
+  });
+}
+
+function addSmoke(x,y){
+  particles.push({
+    x,y,
+    vx:(Math.random()-0.5)*1,
+    vy:(Math.random()-1)*1.5,
+    size:Math.random()*8+4,
+    life:1
+  });
+}
+
+function drawSmoke(){
+  particles.forEach(p=>{
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle="rgba(0,255,255,0.2)";
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,p.size,0,Math.PI*2);
+    ctx.fill();
+    p.x += p.vx; p.y += p.vy; p.life -= 0.01;
+  });
+  particles = particles.filter(p=>p.life>0);
+  ctx.globalAlpha = 1;
 }
 
 // ================= MAIN =================
@@ -75,13 +118,18 @@ async function main(){
 
         Object.entries(kp).forEach(([name,k])=>{
           if(k.score>0.4){
+            updateTrail(name,k.x,k.y);
+            addSmoke(k.x,k.y);
+
             const speed = getSpeed(lastFrame[name],k);
-            if(speed > 6) detectedMovement = true;
+            if(speed>6) detectedMovement = true;
             totalSpeed += speed;
             count++;
             lastFrame[name] = k;
           }
         });
+
+        historyData.push({time: Date.now(), keypoints: kp});
       });
 
       // 🔥 Audio logic
@@ -93,10 +141,10 @@ async function main(){
         }
       }
 
-      // Sesuaikan kecepatan musik berdasarkan rata-rata speed
-      if(isPlaying && count > 0){
+      // PlaybackRate dinamis sesuai speed rata-rata
+      if(isPlaying && count>0){
         const avgSpeed = totalSpeed/count;
-        garbha.playbackRate = Math.min(2, 1 + avgSpeed/10); // 1x normal sampai 2x cepat
+        garbha.playbackRate = Math.min(2, 1 + avgSpeed/10);
       }
 
       // Pause jika diam > 800ms
@@ -107,6 +155,9 @@ async function main(){
 
       detectedMovement = false;
     });
+
+    drawTrail();
+    drawSmoke();
 
     requestAnimationFrame(draw);
   }
