@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Pose AI STAGE FIX PRO</title>
+  <title>Pose AI STAGE PRO MAX</title>
 
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
@@ -17,16 +17,18 @@
       position:relative;
       width:100vw;
       height:100vh;
-      display:flex;
-      justify-content:center;
-      align-items:center;
     }
 
     video,canvas{
       position:absolute;
-      max-width:100%;
-      max-height:100%;
+      width:100%;
+      height:100%;
+      object-fit:cover;
       transform:scaleX(-1);
+    }
+
+    canvas{
+      z-index:2;
     }
 
     #hud{
@@ -35,16 +37,16 @@
       left:20px;
       z-index:9999;
 
-      background:rgba(0,0,0,0.25);
-      backdrop-filter: blur(4px);
+      background:rgba(0,0,0,0.3);
+      backdrop-filter: blur(6px);
 
-      padding:10px;
-      border-radius:8px;
+      padding:12px;
+      border-radius:10px;
 
       color:#00ffff;
-      font-size:12px;
+      font-size:13px;
       font-family:monospace;
-      white-space:pre-wrap;
+      line-height:1.5;
     }
   </style>
 </head>
@@ -65,19 +67,33 @@ const ctx = canvas.getContext('2d');
 const hud = document.getElementById('hud');
 
 let particles = [];
+let lastKeypoints = {};
 
 // ================= CAMERA =================
 async function setupCamera(){
   const stream = await navigator.mediaDevices.getUserMedia({
-    video:{
-      width:{ideal:1280},
-      height:{ideal:720},
-      facingMode:"user"
-    }
+    video:{ width:1280, height:720, facingMode:"user" }
   });
-
   video.srcObject = stream;
   return new Promise(r=>video.onloadeddata=r);
+}
+
+// ================= SMOOTH =================
+function smooth(kp){
+  const out = {};
+  for(let k in kp){
+    if(!lastKeypoints[k]){
+      out[k] = kp[k];
+    } else {
+      out[k] = {
+        ...kp[k],
+        x: lastKeypoints[k].x * 0.7 + kp[k].x * 0.3,
+        y: lastKeypoints[k].y * 0.7 + kp[k].y * 0.3
+      };
+    }
+  }
+  lastKeypoints = out;
+  return out;
 }
 
 // ================= CM =================
@@ -127,11 +143,14 @@ function getEmotion(kp){
 
 // ================= PARTICLE =================
 function addParticle(x,y,color){
+  if(Math.random() > 0.6) return; // biar tidak terlalu ramai
+
   particles.push({
     x,y,
-    vy: Math.random()*2+1,
+    vx:(Math.random()-0.5)*0.5,
+    vy:Math.random()*1.5,
     life:1,
-    size:Math.random()*4+2,
+    size:Math.random()*3+1,
     color
   });
 }
@@ -145,8 +164,9 @@ function drawParticles(){
     ctx.arc(p.x,p.y,p.size,0,Math.PI*2);
     ctx.fill();
 
+    p.x += p.vx;
     p.y += p.vy;
-    p.life -= 0.02;
+    p.life -= 0.015;
   });
 
   particles = particles.filter(p=>p.life>0);
@@ -173,9 +193,10 @@ async function main(){
 
       poses.forEach((pose,i)=>{
 
-        const kpArr = pose.keypoints;
-        const kp = {};
-        kpArr.forEach(k=>kp[k.name]=k);
+        let kp = {};
+        pose.keypoints.forEach(k=>kp[k.name]=k);
+
+        kp = smooth(kp);
 
         const hue = (i*120)%360;
         const g = gesture(kp);
@@ -210,32 +231,19 @@ async function main(){
           }
         });
 
-        kpArr.forEach(k=>{
-          if(k.score>0.4){
-            ctx.fillStyle=`hsl(${hue},100%,70%)`;
-            ctx.beginPath();
-            ctx.arc(k.x,k.y,5,0,Math.PI*2);
-            ctx.fill();
-
-            addParticle(k.x,k.y,`hsl(${hue},100%,70%)`);
-          }
-        });
-
         if(i===0){
-          hud.textContent = `
-TINGGI (CM)
-Bahu: ${safe(pxToCm(kp.left_shoulder?.y, bodyPx))}
-Pinggul: ${safe(pxToCm(kp.left_hip?.y, bodyPx))}
+          hud.innerHTML = `
+<b>TINGGI (CM)</b><br>
+Bahu: ${safe(pxToCm(kp.left_shoulder?.y, bodyPx))}<br>
+Pinggul: ${safe(pxToCm(kp.left_hip?.y, bodyPx))}<br><br>
 
-SUDUT (°)
-Siku Kiri: ${safe(sudut(kp.left_shoulder,kp.left_elbow,kp.left_wrist))}
-Siku Kanan: ${safe(sudut(kp.right_shoulder,kp.right_elbow,kp.right_wrist))}
+<b>SUDUT</b><br>
+Siku Kiri: ${safe(sudut(kp.left_shoulder,kp.left_elbow,kp.left_wrist))}<br>
+Siku Kanan: ${safe(sudut(kp.right_shoulder,kp.right_elbow,kp.right_wrist))}<br><br>
 
-EMOSI
-${emotion}
+<b>EMOSI</b><br>${emotion}<br><br>
 
-GESTURE
-${g}
+<b>GESTURE</b><br>${g}
 `;
         }
 
@@ -251,13 +259,6 @@ ${g}
 }
 
 main();
-
-// toggle HUD
-window.addEventListener('keydown', e=>{
-  if(e.key==='h'){
-    hud.style.display = hud.style.display==='none'?'block':'none';
-  }
-});
 </script>
 
 </body>
