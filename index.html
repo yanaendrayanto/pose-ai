@@ -67,17 +67,26 @@ async function main(){
     ctx.drawImage(video,0,0);
 
     detector.estimatePoses(video).then(poses=>{
+      let totalSpeed = 0;
+      let count = 0;
+
       poses.forEach(pose=>{
         let kp = {};
         pose.keypoints.forEach(k=>kp[k.name]=k);
+
         Object.entries(kp).forEach(([name,k])=>{
           if(k.score>0.4){
             const speed = getSpeed(lastFrame[name],k);
             if(speed>6) detectedMovement = true;
+            totalSpeed += speed;
+            count++;
             lastFrame[name] = k;
           }
         });
       });
+
+      // Hitung rata-rata kecepatan
+      const avgSpeed = count>0 ? totalSpeed/count : 0;
 
       // 🔥 Audio logic
       if(detectedMovement && firstClick){
@@ -86,6 +95,11 @@ async function main(){
           garbha.play().catch(e=>console.log(e));
           isPlaying = true;
         }
+      }
+
+      // PlaybackRate menyesuaikan gerakan (1x normal, 2x maksimal)
+      if(isPlaying){
+        garbha.playbackRate = Math.min(2, 1 + avgSpeed/10); // tuning bisa diganti
       }
 
       // Pause jika diam > 800ms
