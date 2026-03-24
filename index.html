@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Pose AI Stabil</title>
+  <title>Pose AI PRO</title>
 
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
@@ -32,11 +32,12 @@
 
     #panel{
       margin-left:20px;
-      width:260px;
+      width:280px;
       background:#222;
-      padding:10px;
+      padding:12px;
       font-size:14px;
       white-space:pre-wrap;
+      line-height:1.4;
     }
 
     button{
@@ -74,15 +75,15 @@ const panel = document.getElementById('panel');
 let tinggiReal = 170;
 let prev = {};
 
-// smoothing
+// ================= SMOOTHING =================
 function smooth(name,x,y){
   if(!prev[name]) prev[name]={x,y};
-  prev[name].x = prev[name].x*0.7 + x*0.3;
-  prev[name].y = prev[name].y*0.7 + y*0.3;
+  prev[name].x = prev[name].x*0.8 + x*0.2;
+  prev[name].y = prev[name].y*0.8 + y*0.2;
   return prev[name];
 }
 
-// sudut
+// ================= SUDUT =================
 function sudut(A,B,C){
   if(!A||!B||!C) return null;
   const AB={x:A.x-B.x,y:A.y-B.y};
@@ -93,7 +94,33 @@ function sudut(A,B,C){
   return Math.acos(dot/mag)*(180/Math.PI);
 }
 
-// kamera
+// ================= ESTIMASI TINGGI WALAU DUDUK =================
+function estimasiTinggi(kp){
+  if(!kp.nose || !kp.left_hip) return null;
+  const torso = Math.abs(kp.left_hip.y - kp.nose.y);
+  return torso / 0.43; // rasio tubuh manusia
+}
+
+// ================= GESTURE =================
+function deteksiGesture(kp){
+  if(!kp.left_wrist || !kp.left_shoulder) return "-";
+
+  if(kp.left_wrist.y < kp.left_shoulder.y){
+    return "Tangan Terangkat";
+  }
+
+  if(kp.left_wrist.x < kp.left_shoulder.x - 50){
+    return "Gerak Kiri";
+  }
+
+  if(kp.left_wrist.x > kp.left_shoulder.x + 50){
+    return "Gerak Kanan";
+  }
+
+  return "Diam";
+}
+
+// ================= CAMERA =================
 async function setupCamera(){
   const stream = await navigator.mediaDevices.getUserMedia({
     video:{width:{ideal:640},height:{ideal:480},facingMode:"user"},
@@ -124,28 +151,27 @@ async function main(){
     }
 
     const kpArr = poses[0].keypoints;
-
-    // convert ke object
     const kp = {};
     kpArr.forEach(k=>kp[k.name]=k);
 
-    // cari semua titik valid
     const valid = kpArr.filter(k=>k.score>0.3);
 
-    // AUTO SCALE walau tidak full body
-    let minY = Math.min(...valid.map(k=>k.y));
-    let maxY = Math.max(...valid.map(k=>k.y));
+    // ================= AUTO HEIGHT =================
+    let tinggiPixel = estimasiTinggi(kp);
 
-    const tinggiPixel = maxY - minY;
+    if(!tinggiPixel){
+      let minY = Math.min(...valid.map(k=>k.y));
+      let maxY = Math.max(...valid.map(k=>k.y));
+      tinggiPixel = maxY - minY;
+    }
 
-    // scaling adaptif
     let scaleCm = tinggiReal / (tinggiPixel || 1);
 
-    const toCm = y => (y - minY) * scaleCm;
+    const toCm = y => y ? ((y - kp.nose.y) * scaleCm) : null;
 
     const safe = v => (v !== null && v !== undefined && !isNaN(v)) ? v.toFixed(1) : '-';
 
-    // gambar skeleton
+    // ================= SKELETON =================
     const conn = [
       ['left_shoulder','right_shoulder'],
       ['left_shoulder','left_elbow'],['left_elbow','left_wrist'],
@@ -162,7 +188,7 @@ async function main(){
         const B = smooth(b,kp[b].x,kp[b].y);
 
         ctx.strokeStyle="cyan";
-        ctx.lineWidth=3;
+        ctx.lineWidth=2;
         ctx.beginPath();
         ctx.moveTo(A.x,A.y);
         ctx.lineTo(B.x,B.y);
@@ -170,31 +196,39 @@ async function main(){
       }
     });
 
-    // titik
+    // ================= TITIK + DEPTH =================
     valid.forEach(k=>{
       const p = smooth(k.name,k.x,k.y);
-      ctx.fillStyle="red";
+
+      const z = k.z || 0;
+      const size = Math.max(3, 8 - z * 10);
+      const color = 255 - (z * 255);
+
+      ctx.fillStyle=`rgb(${color},0,255)`;
+
       ctx.beginPath();
-      ctx.arc(p.x,p.y,4,0,Math.PI*2);
+      ctx.arc(p.x,p.y,size,0,Math.PI*2);
       ctx.fill();
     });
 
-    // OUTPUT SELALU MUNCUL (walau setengah badan)
+    // ================= DATA =================
+    const gesture = deteksiGesture(kp);
+
     panel.textContent = `
-TINGGI (Estimasi Adaptif)
-Total Referensi: ${safe(tinggiReal)}
+TINGGI (AUTO ADAPTIF)
+Referensi: ${tinggiReal} cm
 
 KETINGGIAN (cm)
 Kepala: ${safe(toCm(kp.nose?.y))}
-Bahu Kiri: ${safe(toCm(kp.left_shoulder?.y))}
-Bahu Kanan: ${safe(toCm(kp.right_shoulder?.y))}
+Bahu: ${safe(toCm(kp.left_shoulder?.y))}
 Pinggul: ${safe(toCm(kp.left_hip?.y))}
-Tangan: ${safe(toCm(kp.left_wrist?.y))}
 
 SUDUT (°)
 Siku Kiri: ${safe(sudut(kp.left_shoulder,kp.left_elbow,kp.left_wrist))}
 Siku Kanan: ${safe(sudut(kp.right_shoulder,kp.right_elbow,kp.right_wrist))}
-Bahu Kiri: ${safe(sudut(kp.left_elbow,kp.left_shoulder,kp.left_hip))}
+
+GESTURE
+${gesture}
 `;
 
     requestAnimationFrame(loop);
@@ -202,7 +236,7 @@ Bahu Kiri: ${safe(sudut(kp.left_elbow,kp.left_shoulder,kp.left_hip))}
 
   loop();
 
-  // kalibrasi
+  // ================= KALIBRASI =================
   document.getElementById('kalibrasi').onclick=()=>{
     const input = prompt("Masukkan tinggi badan (cm):");
     if(input){
@@ -210,7 +244,7 @@ Bahu Kiri: ${safe(sudut(kp.left_elbow,kp.left_shoulder,kp.left_hip))}
     }
   };
 
-  // capture
+  // ================= CAPTURE + JSON =================
   document.getElementById('capture').onclick=()=>{
     const temp=document.createElement('canvas');
     const t=temp.getContext('2d');
@@ -223,10 +257,25 @@ Bahu Kiri: ${safe(sudut(kp.left_elbow,kp.left_shoulder,kp.left_hip))}
     t.setTransform(1,0,0,1,0,0);
     t.drawImage(canvas,0,0);
 
+    // download image
     const link=document.createElement('a');
     link.download="pose.jpg";
     link.href=temp.toDataURL();
     link.click();
+
+    // download JSON
+    const data = {
+      waktu: Date.now(),
+      tinggi: tinggiReal
+    };
+
+    const blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = "pose.json";
+    a.click();
   };
 }
 
