@@ -1,282 +1,179 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Pose AI PRO</title>
+  <title>Pose AI STAGE</title>
 
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
 
   <style>
     body{
-      display:flex;
-      flex-direction:row;
-      justify-content:center;
-      background:#111;
-      color:white;
-      font-family:sans-serif;
-      margin:20px;
-    }
-
-    #container{
-      position:relative;
+      margin:0;
+      overflow:hidden;
+      background:black;
     }
 
     video,canvas{
-      width:480px;
-      height:480px;
       position:absolute;
       top:0;
       left:0;
+      width:100vw;
+      height:100vh;
+      object-fit:cover;
       transform:scaleX(-1);
     }
-
-    #panel{
-      margin-left:20px;
-      width:280px;
-      background:#222;
-      padding:12px;
-      font-size:14px;
-      white-space:pre-wrap;
-      line-height:1.4;
-    }
-
-    button{
-      position:fixed;
-      right:20px;
-      padding:10px;
-      border:none;
-      border-radius:5px;
-      cursor:pointer;
-    }
-
-    #capture{ top:20px; background:#28a745; color:white; }
-    #kalibrasi{ top:70px; background:#007bff; color:white; }
   </style>
 </head>
 
 <body>
 
-<div id="container">
-  <video id="video" autoplay playsinline muted></video>
-  <canvas id="canvas"></canvas>
-</div>
-
-<div id="panel"></div>
-
-<button id="capture">📸 Capture</button>
-<button id="kalibrasi">📏 Kalibrasi</button>
+<video id="video" autoplay playsinline muted></video>
+<canvas id="canvas"></canvas>
 
 <script>
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-const panel = document.getElementById('panel');
 
-let tinggiReal = 170;
-let prev = {};
-
-// ================= SMOOTHING =================
-function smooth(name,x,y){
-  if(!prev[name]) prev[name]={x,y};
-  prev[name].x = prev[name].x*0.8 + x*0.2;
-  prev[name].y = prev[name].y*0.8 + y*0.2;
-  return prev[name];
-}
-
-// ================= SUDUT =================
-function sudut(A,B,C){
-  if(!A||!B||!C) return null;
-  const AB={x:A.x-B.x,y:A.y-B.y};
-  const CB={x:C.x-B.x,y:C.y-B.y};
-  const dot=AB.x*CB.x+AB.y*CB.y;
-  const mag=Math.hypot(AB.x,AB.y)*Math.hypot(CB.x,CB.y);
-  if(mag===0) return null;
-  return Math.acos(dot/mag)*(180/Math.PI);
-}
-
-// ================= ESTIMASI TINGGI WALAU DUDUK =================
-function estimasiTinggi(kp){
-  if(!kp.nose || !kp.left_hip) return null;
-  const torso = Math.abs(kp.left_hip.y - kp.nose.y);
-  return torso / 0.43; // rasio tubuh manusia
-}
-
-// ================= GESTURE =================
-function deteksiGesture(kp){
-  if(!kp.left_wrist || !kp.left_shoulder) return "-";
-
-  if(kp.left_wrist.y < kp.left_shoulder.y){
-    return "Tangan Terangkat";
-  }
-
-  if(kp.left_wrist.x < kp.left_shoulder.x - 50){
-    return "Gerak Kiri";
-  }
-
-  if(kp.left_wrist.x > kp.left_shoulder.x + 50){
-    return "Gerak Kanan";
-  }
-
-  return "Diam";
-}
+let trails = [];
 
 // ================= CAMERA =================
 async function setupCamera(){
   const stream = await navigator.mediaDevices.getUserMedia({
-    video:{width:{ideal:640},height:{ideal:480},facingMode:"user"},
+    video:{facingMode:"user"},
     audio:false
   });
   video.srcObject = stream;
   return new Promise(r=>video.onloadeddata=r);
 }
 
+// ================= GESTURE =================
+function gesture(kp){
+  if(!kp.left_wrist || !kp.left_shoulder) return "none";
+
+  if(kp.left_wrist.y < kp.left_shoulder.y){
+    return "raise";
+  }
+
+  return "normal";
+}
+
+// ================= PARTICLE EFFECT =================
+function addTrail(x,y,color){
+  trails.push({
+    x,y,
+    life:1,
+    color
+  });
+}
+
+// ================= DRAW TRAILS =================
+function drawTrails(){
+  trails.forEach(p=>{
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,6,0,Math.PI*2);
+    ctx.fill();
+
+    p.life -= 0.02;
+  });
+
+  trails = trails.filter(p=>p.life>0);
+  ctx.globalAlpha = 1;
+}
+
+// ================= MAIN =================
 async function main(){
   await setupCamera();
 
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
 
   const detector = await poseDetection.createDetector(
     poseDetection.SupportedModels.MoveNet,
-    {modelType:poseDetection.movenet.modelType.SINGLEPOSE_THUNDER}
+    {
+      modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING
+    }
   );
 
   async function loop(){
-    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle="rgba(0,0,0,0.2)";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
 
-    const poses = await detector.estimatePoses(video,{flipHorizontal:true});
-    if(!poses.length){
-      panel.textContent="Tidak terdeteksi";
-      return requestAnimationFrame(loop);
-    }
+    const poses = await detector.estimatePoses(video);
 
-    const kpArr = poses[0].keypoints;
-    const kp = {};
-    kpArr.forEach(k=>kp[k.name]=k);
+    poses.forEach((pose,i)=>{
 
-    const valid = kpArr.filter(k=>k.score>0.3);
+      const kpArr = pose.keypoints;
+      const kp = {};
+      kpArr.forEach(k=>kp[k.name]=k);
 
-    // ================= AUTO HEIGHT =================
-    let tinggiPixel = estimasiTinggi(kp);
+      const g = gesture(kp);
 
-    if(!tinggiPixel){
-      let minY = Math.min(...valid.map(k=>k.y));
-      let maxY = Math.max(...valid.map(k=>k.y));
-      tinggiPixel = maxY - minY;
-    }
+      // ================= COLOR PER DANCER =================
+      const hue = (i * 120) % 360;
 
-    let scaleCm = tinggiReal / (tinggiPixel || 1);
+      // ================= SKELETON =================
+      const conn = [
+        ['left_shoulder','right_shoulder'],
+        ['left_shoulder','left_elbow'],['left_elbow','left_wrist'],
+        ['right_shoulder','right_elbow'],['right_elbow','right_wrist'],
+        ['left_shoulder','left_hip'],['right_shoulder','right_hip'],
+        ['left_hip','right_hip'],
+        ['left_hip','left_knee'],['left_knee','left_ankle'],
+        ['right_hip','right_knee'],['right_knee','right_ankle']
+      ];
 
-    const toCm = y => y ? ((y - kp.nose.y) * scaleCm) : null;
+      conn.forEach(([a,b])=>{
+        if(kp[a]?.score>0.4 && kp[b]?.score>0.4){
 
-    const safe = v => (v !== null && v !== undefined && !isNaN(v)) ? v.toFixed(1) : '-';
+          ctx.strokeStyle = `hsl(${hue},100%,60%)`;
+          ctx.lineWidth = 3;
 
-    // ================= SKELETON =================
-    const conn = [
-      ['left_shoulder','right_shoulder'],
-      ['left_shoulder','left_elbow'],['left_elbow','left_wrist'],
-      ['right_shoulder','right_elbow'],['right_elbow','right_wrist'],
-      ['left_shoulder','left_hip'],['right_shoulder','right_hip'],
-      ['left_hip','right_hip'],
-      ['left_hip','left_knee'],['left_knee','left_ankle'],
-      ['right_hip','right_knee'],['right_knee','right_ankle']
-    ];
+          ctx.beginPath();
+          ctx.moveTo(kp[a].x, kp[a].y);
+          ctx.lineTo(kp[b].x, kp[b].y);
+          ctx.stroke();
+        }
+      });
 
-    conn.forEach(([a,b])=>{
-      if(kp[a]?.score>0.3 && kp[b]?.score>0.3){
-        const A = smooth(a,kp[a].x,kp[a].y);
-        const B = smooth(b,kp[b].x,kp[b].y);
+      // ================= VISUAL ART =================
+      kpArr.forEach(k=>{
+        if(k.score>0.4){
 
-        ctx.strokeStyle="cyan";
-        ctx.lineWidth=2;
-        ctx.beginPath();
-        ctx.moveTo(A.x,A.y);
-        ctx.lineTo(B.x,B.y);
-        ctx.stroke();
-      }
+          const z = k.z || 0;
+          const size = 10 - z*8;
+
+          const color = `hsl(${hue},100%,70%)`;
+
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.arc(k.x,k.y,size,0,Math.PI*2);
+          ctx.fill();
+
+          // trail
+          addTrail(k.x,k.y,color);
+
+          // gesture effect
+          if(g==="raise"){
+            ctx.beginPath();
+            ctx.arc(k.x,k.y,30,0,Math.PI*2);
+            ctx.strokeStyle = color;
+            ctx.stroke();
+          }
+        }
+      });
+
     });
 
-    // ================= TITIK + DEPTH =================
-    valid.forEach(k=>{
-      const p = smooth(k.name,k.x,k.y);
-
-      const z = k.z || 0;
-      const size = Math.max(3, 8 - z * 10);
-      const color = 255 - (z * 255);
-
-      ctx.fillStyle=`rgb(${color},0,255)`;
-
-      ctx.beginPath();
-      ctx.arc(p.x,p.y,size,0,Math.PI*2);
-      ctx.fill();
-    });
-
-    // ================= DATA =================
-    const gesture = deteksiGesture(kp);
-
-    panel.textContent = `
-TINGGI (AUTO ADAPTIF)
-Referensi: ${tinggiReal} cm
-
-KETINGGIAN (cm)
-Kepala: ${safe(toCm(kp.nose?.y))}
-Bahu: ${safe(toCm(kp.left_shoulder?.y))}
-Pinggul: ${safe(toCm(kp.left_hip?.y))}
-
-SUDUT (°)
-Siku Kiri: ${safe(sudut(kp.left_shoulder,kp.left_elbow,kp.left_wrist))}
-Siku Kanan: ${safe(sudut(kp.right_shoulder,kp.right_elbow,kp.right_wrist))}
-
-GESTURE
-${gesture}
-`;
+    drawTrails();
 
     requestAnimationFrame(loop);
   }
 
   loop();
-
-  // ================= KALIBRASI =================
-  document.getElementById('kalibrasi').onclick=()=>{
-    const input = prompt("Masukkan tinggi badan (cm):");
-    if(input){
-      tinggiReal = parseFloat(input);
-    }
-  };
-
-  // ================= CAPTURE + JSON =================
-  document.getElementById('capture').onclick=()=>{
-    const temp=document.createElement('canvas');
-    const t=temp.getContext('2d');
-
-    temp.width=canvas.width;
-    temp.height=canvas.height;
-
-    t.scale(-1,1);
-    t.drawImage(video,-canvas.width,0);
-    t.setTransform(1,0,0,1,0,0);
-    t.drawImage(canvas,0,0);
-
-    // download image
-    const link=document.createElement('a');
-    link.download="pose.jpg";
-    link.href=temp.toDataURL();
-    link.click();
-
-    // download JSON
-    const data = {
-      waktu: Date.now(),
-      tinggi: tinggiReal
-    };
-
-    const blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = "pose.json";
-    a.click();
-  };
 }
 
 main();
