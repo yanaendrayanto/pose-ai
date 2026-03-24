@@ -20,6 +20,7 @@ const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
 let lastFrame = {};
+let detectedMovement = false;
 let lastMoveTime = 0;
 let isPlaying = false;
 
@@ -27,11 +28,11 @@ let isPlaying = false;
 const garbha = new Audio("garbha.mp3");
 garbha.loop = true;
 
+// Klik pertama untuk unlock audio
 let firstClick = false;
 window.addEventListener('click', ()=>{
   if(firstClick) return;
   firstClick = true;
-  // pastikan browser autoplay policy tidak blok
   garbha.play().catch(e=>console.log("Audio play error:", e));
 });
 
@@ -47,6 +48,7 @@ async function setupCamera(){
 // ================= MOTION =================
 function getSpeed(prev,curr){
   if(!prev || !curr) return 0;
+  return Math.hypot(curr.x-prev.x, curr.y-prev.y);
 }
 
 // ================= MAIN =================
@@ -60,48 +62,40 @@ async function main(){
     {modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING}
   );
 
-  async function draw(){
+  function draw(){
     ctx.clearRect(0,0,canvas.width,canvas.height);
     ctx.drawImage(video,0,0);
 
-    const poses = await detector.estimatePoses(video);
-    let totalSpeed = 0;
-    let count = 0;
-    let detectedMovement = false;
-
-    poses.forEach(pose=>{
-      let kp = {};
-      pose.keypoints.forEach(k=>kp[k.name]=k);
-      Object.entries(kp).forEach(([name,k])=>{
-        if(k.score>0.4){
-          const speed = getSpeed(lastFrame[name],k);
-          lastFrame[name] = k;
-          totalSpeed += speed;
-          count++;
-          if(speed > 6) detectedMovement = true;
-        }
+    detector.estimatePoses(video).then(poses=>{
+      poses.forEach(pose=>{
+        let kp = {};
+        pose.keypoints.forEach(k=>kp[k.name]=k);
+        Object.entries(kp).forEach(([name,k])=>{
+          if(k.score>0.4){
+            const speed = getSpeed(lastFrame[name],k);
+            if(speed>6) detectedMovement = true;
+            lastFrame[name] = k;
+          }
+        });
       });
-    });
 
-    const avgSpeed = count>0 ? totalSpeed/count : 0;
-
-    // ================= AUDIO LOGIC =================
-    if(detectedMovement && firstClick){
-      lastMoveTime = Date.now();
-      if(!isPlaying){
-        garbha.play().catch(e=>console.log(e));
-        isPlaying = true;
+      // 🔥 Audio logic
+      if(detectedMovement && firstClick){
+        lastMoveTime = Date.now();
+        if(!isPlaying){
+          garbha.play().catch(e=>console.log(e));
+          isPlaying = true;
+        }
       }
-    }
 
-    if(isPlaying){
-      garbha.playbackRate = Math.min(2.5, Math.max(1, 1 + avgSpeed/8));
-    }
+      // Pause jika diam > 800ms
+      if(isPlaying && Date.now() - lastMoveTime > 800){
+        garbha.pause();
+        isPlaying = false;
+      }
 
-    if(isPlaying && Date.now() - lastMoveTime > 800){
-      garbha.pause();
-      isPlaying = false;
-    }
+      detectedMovement = false;
+    });
 
     requestAnimationFrame(draw);
   }
