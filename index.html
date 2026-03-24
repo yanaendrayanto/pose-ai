@@ -1,12 +1,12 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Pixel Rain Body Avoidance</title>
+  <title>Pixel Water Body Interaction</title>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
   <style>
-    body{margin:0;overflow:hidden;background:black;}
-    video,canvas{position:absolute;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);}
+    body {margin:0; overflow:hidden; background:black;}
+    video, canvas {position:absolute; width:100%; height:100%; object-fit:cover; transform:scaleX(-1);}
   </style>
 </head>
 <body>
@@ -20,83 +20,84 @@ const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
 let lastFrame = {};
-let lastMoveTime = 0;
-let isPlaying = false;
 let firstClick = false;
 
 // ================= AUDIO =================
 const garbha = new Audio("garbha.mp3");
 garbha.loop = true;
-window.addEventListener('click', ()=>{
+window.addEventListener('click', () => {
   if(firstClick) return;
   firstClick = true;
-  garbha.play().catch(e=>console.log("Audio play error:", e));
+  garbha.play().catch(e => console.log("Audio error:", e));
 });
 
 // ================= CAMERA =================
 async function setupCamera(){
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video:{width:1280,height:720,facingMode:"user"}
-  });
+  const stream = await navigator.mediaDevices.getUserMedia({video:{width:1280,height:720,facingMode:"user"}});
   video.srcObject = stream;
-  return new Promise(r=>video.onloadeddata=r);
+  return new Promise(r => video.onloadeddata=r);
+}
+
+// ================= PARTICLE =================
+const particles = [];
+const maxParticles = 1000;
+const gravity = 0.2;
+
+function createParticle(x, y){
+  return {
+    x, y,
+    vx: (Math.random()-0.5)*1.5,
+    vy: Math.random()*1.5+0.5,
+    size: Math.random()*3 + 2
+  };
+}
+
+function updateParticles(bodyPoints){
+  particles.forEach(p => {
+    // gravitasi
+    p.vy += gravity;
+    p.x += p.vx;
+    p.y += p.vy;
+
+    // hindari tubuh: geser partikel jika terlalu dekat
+    bodyPoints.forEach(bp => {
+      const dx = p.x - bp.x;
+      const dy = p.y - bp.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if(dist < 30){ // radius avoidance
+        p.x += (dx/dist)*3;
+        p.y += (dy/dist)*3;
+      }
+    });
+
+    // reset jika jatuh keluar layar
+    if(p.y > canvas.height) {
+      p.y = -5;
+      p.x = Math.random() * canvas.width;
+      p.vx = (Math.random()-0.5)*1.5;
+      p.vy = Math.random()*1.5 + 0.5;
+    }
+  });
+
+  // tambah partikel baru jika belum full
+  while(particles.length < maxParticles){
+    particles.push(createParticle(Math.random()*canvas.width, Math.random()*canvas.height));
+  }
+}
+
+function drawParticles(){
+  ctx.fillStyle = 'rgba(0,180,255,0.6)';
+  particles.forEach(p => {
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,p.size,0,Math.PI*2);
+    ctx.fill();
+  });
 }
 
 // ================= MOTION =================
 function getSpeed(prev,curr){
   if(!prev || !curr) return 0;
   return Math.hypot(curr.x-prev.x, curr.y-prev.y);
-}
-
-// ================= PIXEL RAIN =================
-class PixelDrop{
-  constructor(){
-    this.reset();
-  }
-  reset(){
-    this.x = Math.random()*1280;
-    this.y = Math.random()*-720;
-    this.vx = 0;
-    this.vy = Math.random()*4 + 4;
-    this.size = Math.random()*2 + 1; // pixel kecil
-    this.active = true;
-  }
-  update(keypoints){
-    if(!this.active) return;
-    // collision avoidance
-    keypoints.forEach(k=>{
-      if(k.score>0.4 && k.name!=="nose" && k.name!=="left_eye" && k.name!=="right_eye"){
-        const dx = this.x - k.x;
-        const dy = this.y - k.y;
-        const dist = Math.hypot(dx,dy);
-        if(dist < 10){ // threshold avoidance pixel
-          const angle = Math.atan2(dy,dx);
-          const force = 2;
-          this.vx += Math.cos(angle)*force;
-          this.vy += Math.sin(angle)*force;
-        }
-      }
-    });
-    // gravity + small wind
-    this.vy += 0.05;
-    this.vx += (Math.random()-0.5)*0.1;
-
-    this.x += this.vx;
-    this.y += this.vy;
-
-    if(this.y > canvas.height){
-      this.reset();
-    }
-  }
-  draw(){
-    ctx.fillStyle = "rgba(0,150,255,0.9)";
-    ctx.fillRect(this.x,this.y,this.size,this.size);
-  }
-}
-
-let drops = [];
-for(let i=0;i<800;i++){
-  drops.push(new PixelDrop());
 }
 
 // ================= MAIN =================
@@ -115,49 +116,28 @@ async function main(){
     ctx.drawImage(video,0,0);
 
     const poses = await detector.estimatePoses(video);
+    const bodyPoints = [];
     let detectedMovement = false;
-    let totalSpeed = 0;
-    let count = 0;
-    let keypoints = [];
 
-    poses.forEach(pose=>{
-      pose.keypoints.forEach(k=>{
-        keypoints.push(k);
-        if(k.score>0.4){
-          const speed = getSpeed(lastFrame[k.name],k);
+    poses.forEach(pose => {
+      pose.keypoints.forEach(k => {
+        if(k.score > 0.4){
+          bodyPoints.push({x:k.x, y:k.y});
+          const speed = getSpeed(lastFrame[k.name], k);
           lastFrame[k.name] = k;
-          totalSpeed += speed;
-          count++;
-          if(speed>6) detectedMovement = true;
+          if(speed > 6) detectedMovement = true;
         }
       });
     });
 
-    const avgSpeed = count>0 ? totalSpeed/count : 0;
-
-    // Audio logic
+    // audio logic
     if(detectedMovement && firstClick){
-      lastMoveTime = Date.now();
-      if(!isPlaying){
-        garbha.play().catch(e=>console.log(e));
-        isPlaying = true;
-      }
+      garbha.play().catch(e=>console.log(e));
+      garbha.playbackRate = 1 + Math.min(1, Math.random() + 0.5); // sedikit variasi saat bergerak
     }
 
-    if(isPlaying){
-      garbha.playbackRate = Math.min(2, Math.max(1, 1 + avgSpeed/10));
-    }
-
-    if(isPlaying && Date.now() - lastMoveTime > 800){
-      garbha.pause();
-      isPlaying = false;
-    }
-
-    // update & draw pixel rain
-    drops.forEach(d=>{
-      d.update(keypoints);
-      d.draw();
-    });
+    updateParticles(bodyPoints);
+    drawParticles();
 
     requestAnimationFrame(draw);
   }
