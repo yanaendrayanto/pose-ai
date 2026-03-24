@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Heavy Rain Avoiding Body (Nose Down) + Audio</title>
+  <title>Heavy Rain with Head Tracking + Audio</title>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
   <style>
@@ -21,15 +21,21 @@ const ctx = canvas.getContext('2d');
 
 let lastFrame = {};
 let particles = [];
+let firstClick = false;
+let isPlaying = false;
+let lastMoveTime = 0;
 
 // ================= AUDIO =================
 const garbha = new Audio("garbha.mp3");
 garbha.loop = true;
-let firstClick = false;
-window.addEventListener('click', ()=>{
+
+window.addEventListener('click', async ()=>{
   if(firstClick) return;
   firstClick = true;
-  garbha.play().catch(e=>console.log("Audio play error:", e));
+  try{
+    await garbha.play(); // unlock audio
+    isPlaying = true;
+  }catch(e){console.log("Audio play error:", e);}
 });
 
 // ================= CAMERA =================
@@ -46,13 +52,12 @@ class Particle{
   constructor(x,y){
     this.x = x;
     this.y = y;
-    this.vx = (Math.random()-0.5)*0.3; // miring sedikit
-    this.vy = Math.random()*8 + 4; // hujan deras
+    this.vx = (Math.random()-0.5)*0.3;
+    this.vy = Math.random()*8 + 4;
     this.size = Math.random()*2 + 2;
     this.alpha = Math.random()*0.5 + 0.5;
   }
   update(bodyBounds){
-    // hindari tubuh (dari hidung ke bawah)
     let insideBody = bodyBounds.some(b=>{
       return this.x > b.x1 && this.x < b.x2 && this.y > b.y1 && this.y < b.y2;
     });
@@ -76,19 +81,19 @@ class Particle{
 }
 
 // ================= BODY AREA =================
-// Hanya hitung tubuh dari hidung ke bawah
 function getBodyBounds(poses){
   let bounds = [];
   poses.forEach(p=>{
     const keypoints = p.keypoints.filter(k=>k.score>0.4);
     const relevant = keypoints.filter(k=>{
-      // Ambil semua keypoints mulai dari 'nose' ke bawah
-      const order = ['nose','left_eye','right_eye','left_ear','right_ear',
-                     'left_shoulder','right_shoulder','left_elbow','right_elbow',
-                     'left_wrist','right_wrist','left_hip','right_hip',
-                     'left_knee','right_knee','left_ankle','right_ankle'];
+      // Semua bagian kepala sampai kaki
+      const order = [
+        'nose','left_eye','right_eye','left_ear','right_ear','left_shoulder','right_shoulder',
+        'left_elbow','right_elbow','left_wrist','right_wrist','left_hip','right_hip',
+        'left_knee','right_knee','left_ankle','right_ankle'
+      ];
       const index = order.indexOf(k.name);
-      return index >= 0 && index >= order.indexOf('nose'); 
+      return index >= 0;
     });
 
     if(relevant.length){
@@ -105,6 +110,12 @@ function getBodyBounds(poses){
   return bounds;
 }
 
+// ================= MOTION =================
+function getSpeed(prev,curr){
+  if(!prev || !curr) return 0;
+  return Math.hypot(curr.x-prev.x, curr.y-prev.y);
+}
+
 // ================= MAIN =================
 async function main(){
   await setupCamera();
@@ -116,7 +127,7 @@ async function main(){
     {modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING}
   );
 
-  // buat hujan deras
+  // Buat hujan
   for(let i=0;i<2000;i++){
     particles.push(new Particle(Math.random()*canvas.width, Math.random()*canvas.height));
   }
@@ -128,11 +139,49 @@ async function main(){
     const poses = await detector.estimatePoses(video);
     const bodyBounds = getBodyBounds(poses);
 
-    // update & draw partikel
+    // Partikel update & draw
+    let totalSpeed = 0;
+    let count = 0;
+    let detectedMovement = false;
+
+    poses.forEach(p=>{
+      p.keypoints.forEach(k=>{
+        if(k.score>0.4){
+          const speed = getSpeed(lastFrame[k.name], k);
+          lastFrame[k.name] = k;
+          totalSpeed += speed;
+          count++;
+          if(speed>6) detectedMovement = true;
+        }
+      });
+    });
+
+    const avgSpeed = count>0 ? totalSpeed/count : 0;
+
     particles.forEach(p=>{
       p.update(bodyBounds);
       p.draw(ctx);
     });
+
+    // 🔊 Audio logic
+    if(detectedMovement && firstClick){
+      lastMoveTime = Date.now();
+      if(!isPlaying){
+        garbha.play().catch(e=>console.log(e));
+        isPlaying = true;
+      }
+    }
+
+    // PlaybackRate menyesuaikan gerakan
+    if(isPlaying){
+      garbha.playbackRate = Math.min(2, Math.max(1, 1 + avgSpeed/10));
+    }
+
+    // Auto pause jika diam > 800ms
+    if(isPlaying && Date.now() - lastMoveTime > 800){
+      garbha.pause();
+      isPlaying = false;
+    }
 
     requestAnimationFrame(draw);
   }
