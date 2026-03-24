@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>GARBHA MODE – Rain with Body Interaction</title>
+  <title>GARBHA MODE – Ultra Realistic Rain</title>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
   <style>
@@ -46,13 +46,14 @@ async function setupCamera(){
 // ================= RAIN PARTICLES =================
 let rainParticles = [];
 function spawnRain(){
-  for(let i=0;i<3;i++){ // spawn 3 per frame
+  for(let i=0;i<5;i++){ // spawn 5 per frame
     rainParticles.push({
       x: Math.random()*canvas.width,
       y: -10,
-      vy: Math.random()*5+4,
-      length: Math.random()*15+10,
-      splashed: false
+      vy: Math.random()*6+4,
+      length: Math.random()*20+10,
+      splashed: false,
+      opacity: Math.random()*0.3 + 0.3
     });
   }
 }
@@ -66,7 +67,7 @@ function drawRain(poses){
         if(k.score>0.4 && k.y>video.videoHeight*0.3){ // hindari wajah
           const dx = k.x - p.x;
           const dy = k.y - p.y;
-          if(Math.hypot(dx,dy) < 15){ // jarak percikan
+          if(Math.hypot(dx,dy) < 15){ 
             hitBody = true;
           }
         }
@@ -74,31 +75,36 @@ function drawRain(poses){
     });
 
     if(hitBody && !p.splashed){
-      // pecah ke samping
-      for(let j=0;j<3;j++){
+      // percikan dramatis
+      for(let j=0;j<4;j++){
         rainParticles.push({
           x: p.x,
           y: p.y,
-          vy: Math.random()*2 - 1, // horizontal kecil
-          length: Math.random()*8+4,
-          splashed: true
+          vy: Math.random()*2 - 1,
+          length: Math.random()*10+5,
+          splashed: true,
+          opacity: Math.random()*0.5+0.3
         });
       }
       p.splashed=true;
     }
 
     // gambar hujan
-    ctx.strokeStyle = 'rgba(180, 220, 255, 0.7)';
+    const grad = ctx.createLinearGradient(p.x, p.y, p.x, p.y + p.length);
+    grad.addColorStop(0, `rgba(200,220,255,0)`);
+    grad.addColorStop(0.5, `rgba(200,220,255,${p.opacity})`);
+    grad.addColorStop(1, `rgba(180,200,255,0.7)`);
+
+    ctx.strokeStyle = grad;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(p.x, p.y);
-    ctx.lineTo(p.x, p.y + (p.length || 10));
+    ctx.lineTo(p.x, p.y + p.length);
     ctx.stroke();
 
     p.y += p.vy;
   });
 
-  // hapus yg sudah keluar layar
   rainParticles = rainParticles.filter(p=>p.y<canvas.height+20);
 }
 
@@ -141,7 +147,7 @@ async function main(){
 
     const avgSpeed = count>0 ? totalSpeed/count : 0;
 
-    // audio responsive
+    // Audio responsive
     if(detectedMovement && firstClick){
       lastMoveTime = Date.now();
       if(!isPlaying){
