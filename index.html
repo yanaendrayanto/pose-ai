@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>GARBHA MODE - Futuristic AI Dance</title>
+  <title>GARBHA MODE - Fire Particles AI Dance</title>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
   <style>
@@ -58,20 +58,29 @@ function addParticle(x,y){
   particles.push({
     x, y,
     vx:(Math.random()-0.5)*1,
-    vy:(Math.random()*-1.5)-0.5,
-    size: Math.random()*8+4,
+    vy:(Math.random()*-2)-0.5,
+    size: Math.random()*6+4,
     life:1,
-    color1: `rgba(0,${150+Math.random()*105},255,0.3)`,
-    color2: `rgba(0,${200+Math.random()*55},255,0.0)`
+    colors:[
+      `rgba(255,255,0,0.8)`,
+      `rgba(255,165,0,0.6)`,
+      `rgba(255,0,0,0.4)`
+    ]
   });
 }
 
 function drawParticles(){
   particles.forEach(p=>{
-    ctx.fillStyle = p.color1;
+    // Gradient api
+    const grd = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+    grd.addColorStop(0, p.colors[0]);
+    grd.addColorStop(0.5, p.colors[1]);
+    grd.addColorStop(1, p.colors[2]);
+    ctx.fillStyle = grd;
     ctx.beginPath();
     ctx.arc(p.x,p.y,p.size,0,Math.PI*2);
     ctx.fill();
+
     p.x += p.vx;
     p.y += p.vy;
     p.life -= 0.01;
@@ -92,7 +101,7 @@ function drawTrails(){
       if(i===0) ctx.moveTo(p.x,p.y);
       else ctx.lineTo(p.x,p.y);
     });
-    ctx.strokeStyle="rgba(0,255,255,0.5)";
+    ctx.strokeStyle="rgba(255,100,0,0.6)"; // neon fire trail
     ctx.lineWidth=2;
     ctx.stroke();
   });
