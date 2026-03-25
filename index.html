@@ -14,8 +14,13 @@
       width:100%;
       height:100%;
       object-fit:contain;
+      video{
       transform:scaleX(-1);
     }
+    
+      canvas{
+        transform:none;
+      }
     #hud{
       position:fixed;top:20px;left:20px;
       background:rgba(0,0,0,0.3);
@@ -216,12 +221,7 @@ async function main(){
     ctx.fillStyle = "black";
     ctx.fillRect(0,0,canvas.width,canvas.height);
     ctx.globalAlpha = 1;
-
-    ctx.save();
-    ctx.translate(canvas.width, 0);
-    ctx.scale(-1, 1);
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    ctx.restore();
 
     // POSE
     if(!isProcessingPose){
@@ -350,16 +350,18 @@ startBtn.onclick = async ()=>{
       a.click();
     };
 
+    // START RECORD
     mediaRecorder.start();
-    recBtn.innerText = "RECORD";
-    recBtn.style.background = "red";
+    recBtn.innerText = "STOP";
     recBtn.style.background = "black";
     isRecording = true;
 
   } else {
 
+    // STOP RECORD
     mediaRecorder.stop();
     recBtn.innerText = "RECORD";
+    recBtn.style.background = "red";
     isRecording = false;
 
   }
