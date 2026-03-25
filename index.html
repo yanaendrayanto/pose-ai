@@ -63,6 +63,7 @@ let particles = [];
 let trails = {};
 let lastFrame = {};
 let energy = 0;
+let mode = "ambient";
 
 // 🔥 LOCK SYSTEM
 let isProcessingPose = false;
@@ -112,6 +113,17 @@ function playSound(intensity){
 
   osc.start();
   osc.stop(audioCtx.currentTime + 0.15);
+}
+  if(mode === "ambient"){
+  filter.frequency.value = 500;
+}
+
+if(mode === "spirit"){
+  filter.frequency.value = 800;
+}
+
+if(mode === "chaos"){
+  filter.frequency.value = 1200;
 }
 
 // ================= CAMERA =================
@@ -264,6 +276,14 @@ async function main(){
           energy = total / (count || 1);
         });
 
+              if(energy < 8){
+        mode = "ambient";
+      }else if(energy < 20){
+        mode = "spirit";
+      }else{
+        mode = "chaos";
+      }
+
         isProcessingPose = false;
 
       }).catch(()=> isProcessingPose=false);
@@ -278,9 +298,49 @@ async function main(){
 
     drawTrail();
     drawSmoke();
+
+    // ================= GARBHA VISUAL =================
+
+// 🌑 AMBIENT (tenang)
+if(mode === "ambient"){
+  ctx.fillStyle = "rgba(0,0,50,0.05)";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+}
+
+// 🌌 SPIRIT (wajah aktif)
+if(mode === "spirit"){
+  ctx.fillStyle = "rgba(100,0,150,0.05)";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // partikel halus
+  for(let i=0;i<2;i++){
+    addSmoke(
+      Math.random()*canvas.width,
+      Math.random()*canvas.height
+    );
+  }
+}
+
+// 🔥 CHAOS (ledakan)
+if(mode === "chaos"){
+  ctx.fillStyle = "rgba(255,100,0,0.08)";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // partikel banyak
+  for(let i=0;i<10;i++){
+    addSmoke(
+      Math.random()*canvas.width,
+      Math.random()*canvas.height
+    );
+  }
+}
+    
     drawFace();
 
-    hud.innerHTML = "ENERGY: " + energy.toFixed(2);
+    hud.innerHTML = `
+    MODE: ${mode.toUpperCase()} <br>
+    ENERGY: ${energy.toFixed(2)}
+    `;
 
     requestAnimationFrame(draw);
   }
