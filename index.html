@@ -136,6 +136,17 @@ async function main(){
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
 
+  // 🔥 TAMBAHKAN DI SINI
+  const FACE_68_INDEX = [
+    10,338,297,332,284,251,389,356,454,323,
+    361,288,397,365,379,378,400,377,152,148,
+    176,149,150,136,172,58,132,93,234,127,
+    162,21,54,103,67,109,10,338,297,332,
+    284,251,389,356,454,323,361,288,397,365,
+    379,378,400,377,152,148,176,149,150,136,
+    172,58,132,93,234,127,162,21,54,103
+  ];
+
   const detector = await poseDetection.createDetector(
     poseDetection.SupportedModels.MoveNet,
     {modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING}
@@ -161,50 +172,77 @@ faceMesh.onResults(results => {
 
   let lastFrame = {};
 
-  function draw(){
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    ctx.drawImage(video,0,0);
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
 
-    detector.estimatePoses(video).then(poses=>{
+  // ✅ tampilkan video (AMAN)
+  if(video.readyState >= 2 && video.videoWidth > 0){
+    ctx.drawImage(video,0,0,canvas.width,canvas.height);
+  }
 
-      poses.forEach(pose=>{
+  // ================= FACE 68 POINT =================
+  if(faceLandmarks.length > 0){
+    ctx.fillStyle = "rgba(255,0,255,0.8)";
 
-        let kp = {};
-        pose.keypoints.forEach(k=>kp[k.name]=k);
+    FACE_68_INDEX.forEach(i => {
+      const p = faceLandmarks[i];
+      if(p){
+        const x = p.x * canvas.width;
+        const y = p.y * canvas.height;
 
-        Object.entries(kp).forEach(([name,k])=>{
+        ctx.beginPath();
+        ctx.arc(x, y, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+  }
 
-          if(k.score>0.4){
+  // ================= POSE =================
+  detector.estimatePoses(video).then(poses=>{
 
-            updateTrail(name,k.x,k.y);
-            addSmoke(k.x,k.y);
+    poses.forEach(pose=>{
 
-            const speed = getSpeed(lastFrame[name],k);
+      let kp = {};
+      pose.keypoints.forEach(k=>kp[k.name]=k);
 
-            if(speed>10){
-              playSound(speed/50);
-            }
+      Object.entries(kp).forEach(([name,k])=>{
 
-            lastFrame[name] = k;
+        if(k.score>0.4){
+
+          updateTrail(name,k.x,k.y);
+          addSmoke(k.x,k.y);
+
+          const speed = getSpeed(lastFrame[name],k);
+
+          if(speed>10){
+            playSound(speed/50);
           }
 
-        });
+          lastFrame[name] = k;
+        }
 
-        // SAVE JSON FRAME
-        historyData.push({
-          time: Date.now(),
-          keypoints: kp
-        });
+      });
 
+      // SAVE JSON FRAME
+      historyData.push({
+        time: Date.now(),
+        keypoints: kp
       });
 
     });
 
-    drawTrail();
-    drawSmoke();
+  });
 
-    requestAnimationFrame(draw);
+  drawTrail();
+  drawSmoke();
+
+  // ✅ update FaceMesh (AMAN & STABIL)
+  if(video.readyState >= 2 && video.videoWidth > 0){
+    faceMesh.send({image: video});
   }
+
+  requestAnimationFrame(draw);
+}
 
   draw();
 }
