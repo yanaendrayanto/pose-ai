@@ -69,7 +69,11 @@ let faceMesh;
 let facePoints = [];
 let frameSkip = 0;
 
-// 🔥 68 LANDMARK MAPPING
+// 🔥 EXPRESSION
+let isMouthOpen = false;
+let isSmiling = false;
+
+// 🔥 68 LANDMARK
 const FACE_68 = [
   10,338,297,332,284,251,389,356,
   454,323,361,288,397,365,379,378,
@@ -90,24 +94,20 @@ function playSound(intensity){
   const gain = audioCtx.createGain();
 
   osc.type = "sine";
-  osc.frequency.value = 200 + energy * 8;
-  gain.gain.value = Math.min(0.2, energy/150);
+  osc.frequency.value = 200 + intensity * 10;
+  gain.gain.value = 0.1;
 
   osc.connect(gain);
   gain.connect(audioCtx.destination);
 
   osc.start();
-  osc.stop(audioCtx.currentTime + 0.08);
+  osc.stop(audioCtx.currentTime + 0.05);
 }
 
 // ================= CAMERA =================
 async function setupCamera(){
   const stream = await navigator.mediaDevices.getUserMedia({
-    video:{
-      width:{ideal:1280},
-      height:{ideal:720},
-      facingMode:"user"
-    }
+    video:{width:{ideal:1280},height:{ideal:720},facingMode:"user"}
   });
 
   video.srcObject = stream;
@@ -189,7 +189,25 @@ function drawFace(){
     ctx.arc(x,y,2,0,Math.PI*2);
     ctx.fill();
   });
+}
 
+// ================= EXPRESSION =================
+function detectExpression(){
+
+  if(!facePoints || facePoints.length === 0) return;
+
+  const topLip = facePoints[13];
+  const bottomLip = facePoints[14];
+  const leftMouth = facePoints[61];
+  const rightMouth = facePoints[291];
+
+  if(!topLip || !bottomLip) return;
+
+  const mouthOpen = Math.abs(topLip.y - bottomLip.y);
+  isMouthOpen = mouthOpen > 0.035;
+
+  const smileWidth = Math.abs(leftMouth.x - rightMouth.x);
+  isSmiling = smileWidth > 0.28;
 }
 
 // ================= MAIN =================
@@ -211,7 +229,7 @@ async function main(){
 
   faceMesh.setOptions({
     maxNumFaces:1,
-    refineLandmarks: false
+    refineLandmarks:false
   });
 
   faceMesh.onResults(results=>{
@@ -226,15 +244,12 @@ async function main(){
     ctx.drawImage(video,0,0);
 
     detector.estimatePoses(video).then(poses=>{
-
       poses.forEach(pose=>{
-
         let total = 0;
         let count = 0;
 
         pose.keypoints.forEach(k=>{
           if(k.score>0.4){
-
             updateTrail(k.name,k.x,k.y);
             addSmoke(k.x,k.y);
 
@@ -252,10 +267,9 @@ async function main(){
 
         energy = total / (count || 1);
       });
-
     });
 
-    // 🔥 FIX UTAMA: ANTI TABRAKAN CPU
+    // FACE
     frameSkip++;
     if(frameSkip % 5 === 0 && energy < 20){
       setTimeout(()=>{
@@ -266,8 +280,26 @@ async function main(){
     drawTrail();
     drawSmoke();
     drawFace();
+    detectExpression();
 
-    hud.innerHTML = "ENERGY: " + energy.toFixed(2);
+    // ================= REACTION =================
+
+    // 😄 SENYUM → visual glow
+    if(isSmiling){
+      ctx.fillStyle = "rgba(255,200,0,0.08)";
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+    }
+
+    // 😮 MULUT → sound trigger
+    if(isMouthOpen){
+      playSound(15);
+    }
+
+    hud.innerHTML = `
+      ENERGY: ${energy.toFixed(2)} <br>
+      SMILE: ${isSmiling} <br>
+      MOUTH: ${isMouthOpen}
+    `;
 
     requestAnimationFrame(draw);
   }
@@ -275,7 +307,6 @@ async function main(){
   draw();
 }
 
-// ================= START =================
 startBtn.onclick = async ()=>{
   await audioCtx.resume();
   startBtn.style.display = "none";
