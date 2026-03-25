@@ -267,14 +267,12 @@ async function main(){
               addSmoke(x, y);
               
               const speed = getSpeed(lastFrame[k.name], {x:x, y:y});
-              lastFrame[k.name] = {x:x, y:y};
-              
-              const speed=getSpeed(lastFrame[k.name],k);
-              total+=speed;
+              total += speed;
               count++;
-
+              
               if(speed>12) playSound(speed);
-              lastFrame[k.name]=k;
+              
+              lastFrame[k.name] = {x:x, y:y};
             }
           });
 
