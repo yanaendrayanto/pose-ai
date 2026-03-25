@@ -64,49 +64,50 @@ let trails = {};
 let lastFrame = {};
 let energy = 0;
 
+// ================= FACE =================
 let faceMesh;
 let facePoints = [];
 let frameSkip = 0;
 
-let isMouthOpen = false;
-let isSmiling = false;
+// 🔥 68 LANDMARK MAPPING
+const FACE_68 = [
+  10,338,297,332,284,251,389,356,
+  454,323,361,288,397,365,379,378,
+  400,377,152,148,176,149,150,136,
+  172,58,132,93,234,127,162,21,
+  33,7,163,144,145,153,154,155,
+  263,249,390,373,374,380,381,382,
+  1,2,98,327,168,197,
+  61,146,91,181,84,17,314,405,
+  321,375,291,308
+];
 
-let prevMouthState = false;
-
-// ================= AUDIO (FIX HALUS) =================
+// ================= AUDIO =================
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
 function playSound(intensity){
-
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
-  const filter = audioCtx.createBiquadFilter();
 
   osc.type = "sine";
+  osc.frequency.value = 200 + energy * 8;
+  gain.gain.value = Math.min(0.2, energy/150);
 
-  const freq = 180 + intensity * 5;
-  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-
-  filter.type = "lowpass";
-  filter.frequency.setValueAtTime(800, audioCtx.currentTime);
-
-  // envelope (anti sember)
-  gain.gain.setValueAtTime(0, audioCtx.currentTime);
-  gain.gain.linearRampToValueAtTime(0.15, audioCtx.currentTime + 0.02);
-  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
-
-  osc.connect(filter);
-  filter.connect(gain);
+  osc.connect(gain);
   gain.connect(audioCtx.destination);
 
   osc.start();
-  osc.stop(audioCtx.currentTime + 0.15);
+  osc.stop(audioCtx.currentTime + 0.08);
 }
 
 // ================= CAMERA =================
 async function setupCamera(){
   const stream = await navigator.mediaDevices.getUserMedia({
-    video:{width:{ideal:1280},height:{ideal:720},facingMode:"user"}
+    video:{
+      width:{ideal:1280},
+      height:{ideal:720},
+      facingMode:"user"
+    }
   });
 
   video.srcObject = stream;
@@ -171,35 +172,24 @@ function getSpeed(prev, curr){
 
 // ================= FACE =================
 function drawFace(){
+
   if(!facePoints || facePoints.length === 0) return;
 
-  FACE_68.slice(0, 40).forEach(i=>{
+  let maxPoints = energy > 15 ? 20 : 50;
+
+  FACE_68.slice(0, maxPoints).forEach(i=>{
     const p = facePoints[i];
     if(!p) return;
 
+    const x = p.x * canvas.width;
+    const y = p.y * canvas.height;
+
+    ctx.fillStyle = `hsl(${energy*5},100%,60%)`;
     ctx.beginPath();
-    ctx.arc(p.x*canvas.width, p.y*canvas.height,2,0,Math.PI*2);
+    ctx.arc(x,y,2,0,Math.PI*2);
     ctx.fill();
   });
-}
 
-// ================= EXPRESSION =================
-function detectExpression(){
-
-  if(!facePoints || facePoints.length === 0) return;
-
-  const topLip = facePoints[13];
-  const bottomLip = facePoints[14];
-  const leftMouth = facePoints[61];
-  const rightMouth = facePoints[291];
-
-  if(!topLip || !bottomLip) return;
-
-  const mouthOpen = Math.abs(topLip.y - bottomLip.y);
-  isMouthOpen = mouthOpen > 0.035;
-
-  const smileWidth = Math.abs(leftMouth.x - rightMouth.x);
-  isSmiling = smileWidth > 0.28;
 }
 
 // ================= MAIN =================
@@ -221,12 +211,12 @@ async function main(){
 
   faceMesh.setOptions({
     maxNumFaces:1,
-    refineLandmarks:false
+    refineLandmarks: false
   });
 
-  faceMesh.onResults(res=>{
-    if(res.multiFaceLandmarks.length){
-      facePoints = res.multiFaceLandmarks[0];
+  faceMesh.onResults(results=>{
+    if(results.multiFaceLandmarks.length > 0){
+      facePoints = results.multiFaceLandmarks[0];
     }
   });
 
@@ -236,37 +226,48 @@ async function main(){
     ctx.drawImage(video,0,0);
 
     detector.estimatePoses(video).then(poses=>{
+
       poses.forEach(pose=>{
+
+        let total = 0;
+        let count = 0;
+
         pose.keypoints.forEach(k=>{
           if(k.score>0.4){
+
             updateTrail(k.name,k.x,k.y);
             addSmoke(k.x,k.y);
+
+            const speed = getSpeed(lastFrame[k.name],k);
+            total += speed;
+            count++;
+
+            if(speed>12){
+              playSound(speed);
+            }
+
+            lastFrame[k.name] = k;
           }
         });
+
+        energy = total / (count || 1);
       });
+
     });
 
+    // 🔥 FIX UTAMA: ANTI TABRAKAN CPU
     frameSkip++;
-    if(frameSkip % 5 === 0){
-      faceMesh.send({image: video});
+    if(frameSkip % 5 === 0 && energy < 20){
+      setTimeout(()=>{
+        faceMesh.send({image: video});
+      }, 0);
     }
 
     drawTrail();
     drawSmoke();
     drawFace();
-    detectExpression();
 
-    // 😄 glow
-    if(isSmiling){
-      ctx.fillStyle="rgba(255,200,0,0.08)";
-      ctx.fillRect(0,0,canvas.width,canvas.height);
-    }
-
-    // 😮 sound ONCE (tidak spam)
-    if(isMouthOpen && !prevMouthState){
-      playSound(20);
-    }
-    prevMouthState = isMouthOpen;
+    hud.innerHTML = "ENERGY: " + energy.toFixed(2);
 
     requestAnimationFrame(draw);
   }
@@ -274,9 +275,10 @@ async function main(){
   draw();
 }
 
+// ================= START =================
 startBtn.onclick = async ()=>{
   await audioCtx.resume();
-  startBtn.style.display="none";
+  startBtn.style.display = "none";
   main();
 };
 </script>
