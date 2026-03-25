@@ -170,12 +170,14 @@ function getSpeed(prev, curr){
   return Math.hypot(curr.x-prev.x, curr.y-prev.y);
 }
 
-// ================= 🔥 FACE 68 DRAW =================
+// ================= FACE =================
 function drawFace(){
 
   if(!facePoints || facePoints.length === 0) return;
 
-  FACE_68.forEach(i=>{
+  let maxPoints = energy > 15 ? 20 : 50;
+
+  FACE_68.slice(0, maxPoints).forEach(i=>{
     const p = facePoints[i];
     if(!p) return;
 
@@ -209,7 +211,7 @@ async function main(){
 
   faceMesh.setOptions({
     maxNumFaces:1,
-    refineLandmarks:true
+    refineLandmarks: false
   });
 
   faceMesh.onResults(results=>{
@@ -253,10 +255,12 @@ async function main(){
 
     });
 
-    // FACE (anti freeze)
+    // 🔥 FIX UTAMA: ANTI TABRAKAN CPU
     frameSkip++;
-    if(frameSkip % 3 === 0){
-      faceMesh.send({image: video});
+    if(frameSkip % 5 === 0 && energy < 20){
+      setTimeout(()=>{
+        faceMesh.send({image: video});
+      }, 0);
     }
 
     drawTrail();
