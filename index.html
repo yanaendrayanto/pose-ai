@@ -201,7 +201,10 @@ function drawFace(){
     if(!p) return;
     ctx.fillStyle = `hsl(${energy*6},100%,60%)`;
     ctx.beginPath();
-    ctx.arc(p.x*canvas.width,p.y*canvas.height,2,0,Math.PI*2);
+    let x = (1 - p.x) * canvas.width;
+    let y = p.y * canvas.height;
+    
+    ctx.arc(x, y, 2, 0, Math.PI*2);
     ctx.fill();
   });
 }
@@ -257,9 +260,15 @@ async function main(){
 
           pose.keypoints.forEach(k=>{
             if(k.score>0.4){
-              updateTrail(k.name,k.x,k.y);
-              addSmoke(k.x,k.y);
-
+              let x = canvas.width - k.x;
+              let y = k.y;
+              
+              updateTrail(k.name, x, y);
+              addSmoke(x, y);
+              
+              const speed = getSpeed(lastFrame[k.name], {x:x, y:y});
+              lastFrame[k.name] = {x:x, y:y};
+              
               const speed=getSpeed(lastFrame[k.name],k);
               total+=speed;
               count++;
