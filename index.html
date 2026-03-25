@@ -8,43 +8,62 @@
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
 
   <style>
-    body{margin:0;overflow:hidden;background:black;}
-    video,canvas{
-      position:absolute;
-      width:100%;
-      height:100%;
-      object-fit:contain;
-      video{
-      transform:scaleX(-1);
-    }
-    
-      canvas{
-        transform:none;
-      }
-    #hud{
-      position:fixed;top:20px;left:20px;
-      background:rgba(0,0,0,0.3);
-      padding:12px;border-radius:10px;
-      color:#00ffff;font-family:monospace;
-    }
-    #startBtn{
-      position:fixed;bottom:20px;left:50%;
-      transform:translateX(-50%);
-      padding:12px 20px;background:#00ffff;
-      border:none;border-radius:8px;cursor:pointer;
-    }
-    #recBtn{
-      position:fixed;
-      bottom:70px;
-      left:50%;
-      transform:translateX(-50%);
-      padding:10px 18px;
-      background:red;
-      color:white;
-      border:none;
-      border-radius:8px;
-      cursor:pointer;
-    }
+    body{
+  margin:0;
+  overflow:hidden;
+  background:black;
+}
+
+video, canvas{
+  position:absolute;
+  width:100%;
+  height:100%;
+  object-fit:contain;
+}
+
+video{
+  transform:scaleX(-1); /* mirror */
+}
+
+canvas{
+  transform:none; /* normal */
+}
+
+#hud{
+  position:fixed;
+  top:20px;
+  left:20px;
+  background:rgba(0,0,0,0.3);
+  padding:12px;
+  border-radius:10px;
+  color:#00ffff;
+  font-family:monospace;
+}
+
+#startBtn{
+  position:fixed;
+  bottom:20px;
+  left:50%;
+  transform:translateX(-50%);
+  padding:12px 20px;
+  background:#00ffff;
+  border:none;
+  border-radius:8px;
+  cursor:pointer;
+}
+
+#recBtn{
+  position:fixed;
+  bottom:70px;
+  left:50%;
+  transform:translateX(-50%);
+  padding:10px 18px;
+  background:red;
+  color:white;
+  border:none;
+  border-radius:8px;
+  cursor:pointer;
+}
   </style>
 </head>
 
