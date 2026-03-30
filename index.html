@@ -100,6 +100,12 @@ let faceMesh;
 let facePoints = [];
 let frameSkip = 0;
 
+const WORDS = [
+  "memory","trace","body","echo","habit","attention",
+  "archive","signal","ghost","loop","breath","energy",
+  "presence","absence","flow","fragment","repetition"
+];
+
 const FACE_68 = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,
 400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,
 33,7,163,144,145,153,154,155,263,249,390,373,374,380,381,382,
@@ -149,25 +155,36 @@ async function setupCamera(){
 // ================= PARTICLE =================
 function addSmoke(x,y){
   particles.push({
-    x,y,
-    vx:(Math.random()-0.5)*1.5,
-    vy:(Math.random()-1)*1.2,
-    size:Math.random()*6 + energy*0.08 + Math.random()*5,
-    life:1
+    y: y,
+    vx: (Math.random()-0.5)*0.5,
+    vy: -Math.random()*1.5 - 0.5,
+    text: word,
+    size: 14 + energy * 0.3,
+    life: 1
   });
 }
 
-function drawSmoke(){
+function drawWords(){
   particles.forEach(p=>{
-    ctx.globalAlpha=p.life;
-    ctx.fillStyle="rgba(0,255,255,0.25)";
-    ctx.beginPath();
-    ctx.arc(p.x,p.y,p.size,0,Math.PI*2);
-    ctx.fill();
-    p.x+=p.vx; p.y+=p.vy; p.life-=0.02;
+    ctx.globalAlpha = p.life;
+
+    ctx.fillStyle = `hsl(${energy*6},100%,70%)`;
+    ctx.font = `${p.size}px monospace`;
+
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.vx * 0.5);
+    ctx.fillText(p.text, 0, 0);
+    ctx.restore();
+
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= 0.015;
   });
-  particles = particles.filter(p=>p.life>0);
-  ctx.globalAlpha=1;
+
+  particles = particles.filter(p=>p.life > 0);
+
+  ctx.globalAlpha = 1;
 }
 
 // ================= TRAIL =================
@@ -265,8 +282,8 @@ async function main(){
               let x = canvas.width - k.x;
               let y = k.y;
               
-              updateTrail(k.name, x, y);
-              addSmoke(x, y);
+             
+              addWord(x, y);
               
               const speed = getSpeed(lastFrame[k.name], {x:x, y:y});
               total += speed;
@@ -281,7 +298,7 @@ async function main(){
           const hand = pose.keypoints.find(k=>k.name==="right_wrist");
           if(hand && hand.y < canvas.height * 0.3){
             for(let i=0;i<6;i++){
-              addSmoke(Math.random()*canvas.width,Math.random()*canvas.height);
+              addWord(Math.random()*canvas.width,Math.random()*canvas.height);
             }
           }
 
@@ -302,8 +319,8 @@ async function main(){
       faceMesh.send({image:video});
     }
 
-    drawTrail();
-    drawSmoke();
+ 
+    drawWords();
 
     // CINEMATIC LIGHT
     let gradient = ctx.createRadialGradient(
