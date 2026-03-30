@@ -47,26 +47,15 @@ let lastWordTime = 0;
 
 // ================= NARASI GARBHA =================
 const WORDS = [
-  // RAHIM
   "rahim","gelap","sunyi","hangat","cair","denyut","terbungkus","awal","benih",
-
-  // LAHIR
   "lahir","napas","tangis","cahaya","terbuka","getar","dunia","pertama",
-
-  // BAYI
   "peluk","ibu","diam","lembut","dekat","rasa","bergantung",
-
-  // ANAK
   "langkah","jatuh","bangun","main","tanya","lihat","belajar","ingin",
-
-  // REMAJA
   "gelisah","cari","arah","ragu","berubah","melawan","ingin tahu",
-
-  // DEWASA
   "pilih","jalan","tanggung","beban","cinta","kehilangan","makna","hidup",
-
-  // REFLEKSI
-  "ingat","ulang","jejak","waktu","arsip","tubuh","kesadaran"
+  "ingat","ulang","jejak","waktu","arsip","tubuh",
+  // variasi refleksi (penting!)
+  "hening","diam","pulang","ruang","rasa","nafas","ke dalam"
 ];
 
 let lifeIndex = 0;
@@ -103,14 +92,23 @@ async function setupCamera(){
 // ================= WORD SYSTEM =================
 function addWord(x, y){
 
-  const word = WORDS[lifeIndex];
+  let word = WORDS[lifeIndex];
 
-  // 🔥 NARASI BERJALAN SESUAI GERAK
+  // 🔥 TRANSISI HIDUP (TIDAK BERHENTI DI AKHIR)
   if(Math.random() < 0.1 + energy*0.02){
     lifeIndex++;
+
+    // 🔥 LOOP HALUS (BUKAN RESET KASAR)
     if(lifeIndex >= WORDS.length){
-      lifeIndex = WORDS.length - 1;
+      lifeIndex = Math.floor(WORDS.length * 0.6); // kembali ke fase dewasa
     }
+  }
+
+  // 🔥 VARIASI DI FASE AKHIR (ANTI "KESADARAN SPAM")
+  if(lifeIndex > WORDS.length - 8){
+    word = WORDS[
+      Math.floor(Math.random() * 8) + (WORDS.length - 8)
+    ];
   }
 
   // 🔥 MEMORY TANPA BATAS
@@ -207,7 +205,7 @@ async function main(){
 
     drawWords();
 
-    // 🔥 MEMORY VISUAL (ARSIP HIDUP)
+    // 🔥 MEMORY VISUAL
     ctx.fillStyle = "white";
     ctx.font = "16px monospace";
     ctx.textAlign = "left";
